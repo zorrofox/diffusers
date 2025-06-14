@@ -127,7 +127,7 @@ import os
 import sys
 import  numpy as np
 
-import torch_xla.core.xla_model as xm
+import torch_xla
 from time import time
 from diffusers import StableDiffusionPipeline
 import torch_xla.runtime as xr
@@ -137,7 +137,7 @@ if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
 
 def main():
-    device = xm.xla_device()
+    device = torch_xla.device()
     model_path = "jffacevedo/pxla_trained_model"
     pipe = StableDiffusionPipeline.from_pretrained(
         model_path, 

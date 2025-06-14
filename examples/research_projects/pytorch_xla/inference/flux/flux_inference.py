@@ -4,6 +4,7 @@ from time import perf_counter
 
 import structlog
 import torch
+import torch_xla
 import torch_xla.core.xla_model as xm
 import torch_xla.debug.metrics as met
 import torch_xla.debug.profiler as xp
@@ -30,7 +31,7 @@ def _main(index, args, text_pipe, ckpt_id):
     if args.profile:
         logger.info(f"starting profiler on port {profiler_port}")
         _ = xp.start_server(profiler_port)
-    device0 = xm.xla_device()
+    device0 = torch_xla.device()
 
     logger.info(f"loading flux from {ckpt_id}")
     flux_pipe = FluxPipeline.from_pretrained(

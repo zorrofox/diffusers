@@ -7,6 +7,7 @@ from pathlib import Path
 import datasets
 import numpy as np
 import torch
+import torch_xla
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import torch_xla.core.xla_model as xm
@@ -63,13 +64,13 @@ import os
 import sys
 import  numpy as np
 
-import torch_xla.core.xla_model as xm
+import torch_xla
 from time import time
 from typing import Tuple
 from diffusers import StableDiffusionPipeline
 
 def main(args):
-    device = xm.xla_device()
+    device = torch_xla.device()
     model_path = <output_dir>
     pipe = StableDiffusionPipeline.from_pretrained(
         model_path,
@@ -534,7 +535,7 @@ def main(args):
     if args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    device = xm.xla_device()
+    device = torch_xla.device()
 
     # Move text_encode and vae to device and cast to weight_dtype
     text_encoder = text_encoder.to(device, dtype=weight_dtype)

@@ -239,9 +239,9 @@ image.save("naruto.png")
 ```py
 from diffusers import DiffusionPipeline
 import torch
-import torch_xla.core.xla_model as xm
+import torch_xla
 
-device = xm.xla_device()
+device = torch_xla.device()
 pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to(device)
 
 prompt = "A naruto with green eyes and red legs."
