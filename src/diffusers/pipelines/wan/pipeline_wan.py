@@ -577,10 +577,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
                 .to(latents.device, latents.dtype)
             )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1)
+            latents_std = latents_std.to(
                 latents.device, latents.dtype
             )
             latents = latents / latents_std + latents_mean
+            latents = latents.to(self.vae.dtype)
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:

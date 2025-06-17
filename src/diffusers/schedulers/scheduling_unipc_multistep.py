@@ -616,7 +616,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 x0_pred = alpha_t * sample - sigma_t * model_output
             elif self.config.prediction_type == "flow_prediction":
                 sigma_t = self.sigmas[self.step_index]
-                x0_pred = sample - sigma_t * model_output
+                #NOTE(hanq): sigma_t is scalar
+                x0_pred = sample - sigma_t.item() * model_output
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, "
@@ -887,6 +888,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
+            R = R.to(torch.float32)
+            b = b.to(torch.float32)
             rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 
         if self.predict_x0:
