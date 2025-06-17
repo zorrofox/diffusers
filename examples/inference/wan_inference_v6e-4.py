@@ -4,6 +4,7 @@ import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
 from transformers import UMT5EncoderModel, AutoTokenizer
 from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanPipeline
+from diffusers.utils import export_to_video
 import argparse
 from pathlib import Path
 import time
@@ -121,7 +122,7 @@ def _mp_main(index, args):
     # Save video frames - only save from one process to avoid multiple identical files
     if index == 0: # Only save from the first process
         output_path = output_dir / f"video_{int(time.time())}.mp4"
-        pipe.video_processor.save_video(video_frames, output_path)
+        export_to_video(video_frames, output_path)
         print(f"Video saved to {output_path}")
 
 if __name__ == "__main__":
