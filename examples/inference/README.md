@@ -6,3 +6,10 @@
 - For `Text-to-Video generation with Wan on v6e 1-chip`, please have a look at [Pipeline examples](https://github.com/shungcp/diffusers/blob/main/examples/inference/wan_inference_1chip.py)
 - For `Text-to-Video generation with Wan on v6e-4 4 chips`, please have a look at [Pipeline examples](https://github.com/shungcp/diffusers/blob/main/examples/inference/wan_inference_v6e-4.py)
 - For `Text-to-Video generation with Wan on v6e-16 16 chips`, please have a look at [Pipeline examples](https://github.com/shungcp/diffusers/blob/main/examples/inference/wan_inference_v6e-16.py)
+
+
+```
+pip install -r requirements.txt
+
+python wan_inference_1chip.py
+```
