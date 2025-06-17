@@ -114,7 +114,7 @@ def _mp_main(index, args):
             num_inference_steps=args.num_inference_steps,
             guidance_scale=args.guidance_scale,
             output_type="np"  # Output as numpy array for easier saving
-        ).frames
+        ).frames[0]
 
     generation_time = time.time() - start_time
     print(f"Video generation completed in {generation_time:.2f} seconds on TPU core {index}")
