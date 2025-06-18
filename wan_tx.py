@@ -148,10 +148,10 @@ def _print_weights(module):
 def main():
   torch.set_default_dtype(torch.bfloat16)
   # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-  model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
-  #model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
+  #model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+  model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
   vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16)
-  flow_shift = 3.0 # 5.0 for 720P, 3.0 for 480P
+  flow_shift = 5.0 # 5.0 for 720P, 3.0 for 480P
   scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
   pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
   pipe.scheduler = scheduler
@@ -164,22 +164,34 @@ def main():
   # _print_weights(pipe.text_encoder)
   # return
 
+  def _move_module(module):
+    with jax.default_device('cpu'):
+      state_dict  = module.state_dict()
+      state_dict = env.to_xla(state_dict)
+      module.load_state_dict(state_dict, assign=True)
+
   torchax.enable_globally()
   env = torchax.default_env()
   mesh = jax.make_mesh((len(jax.devices()), ), (axis, ))
   env.default_device_or_sharding = NamedSharding(mesh, P())
 
-  pipe.to('jax')
+  vae_options = torchax.CompileOptions(
+    methods_to_compile=['decode']
+  )
+  _move_module(pipe.vae)
   pipe.vae = torchax.compile(pipe.vae)
+  _move_module(pipe.text_encoder)
   pipe.text_encoder = torchax.compile(pipe.text_encoder)
-  pipe.transformer.to('jax')
+
   # the param below is not declared as param or buffer so the module.to('jax') didnt work
+  _move_module(pipe.transformer)
   pipe.transformer.rope.freqs = pipe.transformer.rope.freqs.to('jax')
   options = torchax.CompileOptions(
       jax_jit_kwargs={'static_argnames': ('return_dict',)}
   )
   pipe.transformer = torchax.compile(pipe.transformer, options)
 
+  #pipe.to('jax')
   print('Number of devices is:, ', len(jax.devices()))
 
   
@@ -224,6 +236,8 @@ def main():
   prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
   negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
+  long_prompt = "Drone view of waves crashing against the rugged cliffs along Big Sur's garay point beach.The crashing blue waters create white-tipped waves,while the golden light of the setting sun illuminates the rocky shore. A small island with a lighthouse sits in the distance, and greenshrubbery covers the cliffs edge. The steep drop from the road down to the beach is adramatic feat, with the cliff's edges jutting out over the sea. This is a view that captures the raw beauty of the coast and the rugged landscape of the Pacific Coast Highway."
+
   with mesh:
     outputs = []
     for i in range(5):
@@ -233,21 +247,22 @@ def main():
       output = pipe(
           prompt=prompt,
           negative_prompt=negative_prompt,
-          height=384,
-          width=640,
+          #height=384,
+          #width=640,
           num_inference_steps=50,
-          #height=720,
-          #width=1280,
-          num_frames=41,
+          height=720,
+          width=1280,
+          num_frames=81,
           guidance_scale=5.0,
           ).frames[0]
       if i == 4:
         jax.profiler.stop_trace()
+        break
       end = time.perf_counter()  
       print(f'Iteration {i}: {end - start:.6f}s')
       outputs.append(output)
 
-    export_to_video(outputs[0], "output.mp4", fps=8)
+    export_to_video(outputs[0], "output.mp4", fps=16)
     print('DONE')
 
   #print(f'生成视频时长= {(num_frams-1)/fps} - 目前针对1.3B生成5s = (41-1)/8)
