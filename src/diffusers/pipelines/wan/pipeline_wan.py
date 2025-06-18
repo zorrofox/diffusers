@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from jax.sharding import PartitionSpec as P
+import jax
+
 import html
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import regex as re
 import torch
+import torchax
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -166,7 +170,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        text_input_ids = text_input_ids.to(device)
+        # TODO(hanq): this is a hack, but the input needs to be replicated
+        mask = mask.to(device)
+        prompt_embeds = self.text_encoder(text_input_ids, mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
