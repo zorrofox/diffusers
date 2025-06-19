@@ -5,6 +5,7 @@ import torchax
 import time
 import jax
 
+from jax.experimental import shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 
@@ -172,10 +173,18 @@ def main():
 
   torchax.enable_globally()
   env = torchax.default_env()
+
+  env.config.use_tpu_flash_attention = True
+  env.config.shmap_flash_attention = True
+
   mesh = jax.make_mesh((len(jax.devices()), ), (axis, ))
+
+  env._mesh = mesh
   env.default_device_or_sharding = NamedSharding(mesh, P())
 
-  vae_options = torchax.CompileOptions(
+  torchax.default_env()._mesh = mesh
+
+  _vae_options = torchax.CompileOptions(
     methods_to_compile=['decode']
   )
   _move_module(pipe.vae)
@@ -252,8 +261,7 @@ def main():
           num_inference_steps=50,
           height=720,
           width=1280,
-          #num_frames=81,
-          num_frames=41,
+          num_frames=81,
           guidance_scale=5.0,
           ).frames[0]
       if i == 4:
@@ -263,7 +271,7 @@ def main():
       print(f'Iteration {i}: {end - start:.6f}s')
       outputs.append(output)
 
-    export_to_video(outputs[0], "output.mp4", fps=8)
+    export_to_video(outputs[0], "output.mp4", fps=16)
     print('DONE')
 
   #print(f'生成视频时长= {(num_frams-1)/fps} - 目前针对1.3B生成5s = (41-1)/8)
