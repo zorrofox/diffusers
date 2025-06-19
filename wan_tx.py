@@ -252,7 +252,8 @@ def main():
           num_inference_steps=50,
           height=720,
           width=1280,
-          num_frames=81,
+          #num_frames=81,
+          num_frames=41,
           guidance_scale=5.0,
           ).frames[0]
       if i == 4:
@@ -262,7 +263,7 @@ def main():
       print(f'Iteration {i}: {end - start:.6f}s')
       outputs.append(output)
 
-    export_to_video(outputs[0], "output.mp4", fps=16)
+    export_to_video(outputs[0], "output.mp4", fps=8)
     print('DONE')
 
   #print(f'生成视频时长= {(num_frams-1)/fps} - 目前针对1.3B生成5s = (41-1)/8)
