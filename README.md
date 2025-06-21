@@ -142,3 +142,18 @@ encoder.block.*.layer.*.DenseReluDense.wi_*.weight : # (torch.Size([10240, 4096]
 encoder.block.*.layer.*.DenseReluDense.wo.weight : # (torch.Size([4096, 10240]), torch.bfloat16)
 encoder.final_layer_norm.weight : # (torch.Size([4096]), torch.bfloat16)
 ```
+
+### adding flash attention inconsistant issue unit test
+
+```
+python compare_fa_sharding_consistency.py
+...
+==============================
+      FINAL CONCLUSION
+==============================
+❌❌❌ [FAILED] The outputs are different.
+This provides strong evidence that the problem IS inside the WanTransformer3DModel when Flash Attention is used.
+The root cause is likely the self-attention calculation itself being altered by torchax's Flash Attention implementation, when used with this specific tensor sharding strategy.
+==============================
+
+```
