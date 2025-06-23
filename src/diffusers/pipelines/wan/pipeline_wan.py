@@ -577,6 +577,13 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self._current_timestep = None
 
+        # Disable flash attention in VAE, not support head_num sharding since VAE only has size 1.
+        # Need add padding or adjust sharding strategy in VAE.
+        torchax.enable_globally()
+        env = torchax.default_env()
+        env.config.use_tpu_flash_attention = False
+        env.config.shmap_flash_attention = False
+
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
             latents_mean = (

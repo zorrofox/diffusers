@@ -157,3 +157,16 @@ The root cause is likely the self-attention calculation itself being altered by 
 ==============================
 
 ```
+
+### support flash attention
+
+Patch the torachax/ops/jtorch.py into the pytorch/xla/torachax repo.
+
+Current support flash attention to generate correct normal 14B model, 81 frames videos.
+Flash attention prevent the huge attention weight which cause OOM.
+
+1.3B model is not yet ready using flash attention since kv_head = 12 cannot divide by 8 tpus.
+Disable flash attention for VAE for now since kv_head = 1 in VAE.
+
+Iteration 0: 952.361927s
+Iteration 1: 675.130811s
