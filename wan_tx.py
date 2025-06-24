@@ -1,12 +1,16 @@
+import functools
 import re
 import math
 import torch
 import torchax
+from torchax.ops import ops_registry
 import time
 import jax
+import jax.numpy as jnp
 
+from jax.experimental.pallas.ops.tpu import flash_attention
+from jax.experimental.shard_map import shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
-
 
 from diffusers.utils import export_to_video
 from diffusers import AutoencoderKLWan, WanPipeline
@@ -184,6 +188,117 @@ def _print_weights(module):
     print(f"'{k}': (), # {v}")
   print('}')
 
+
+### Flash attention. Copy from torchax.ops.jtorch.py ***
+
+def _sdpa_reference(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    scale=None,
+    enable_gqa=False,
+) -> torch.Tensor:
+  L, S = query.size(-2), key.size(-2)
+  scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+  attn_bias = torch.zeros(L, S, dtype=query.dtype, device=query.device)
+  if is_causal:
+    assert attn_mask is None
+    temp_mask = torch.ones(
+        L, S, dtype=torch.bool, device=query.device).tril(diagonal=0)
+    attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+    attn_bias.to(query.dtype)
+  if attn_mask is not None:
+    if attn_mask.dtype == torch.bool:
+      attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+    else:
+      attn_bias += attn_mask
+  if enable_gqa:
+    key = key.repeat_interleave(query.size(-3) // key.size(-3), -3)
+    value = value.repeat_interleave(query.size(-3) // value.size(-3), -3)
+
+  attn_weight = query @ key.transpose(-2, -1) * scale_factor
+  attn_weight += attn_bias
+  attn_weight = torch.softmax(attn_weight, dim=-1)
+  if dropout_p > 0:
+    attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+  return attn_weight @ value
+
+def _tpu_flash_attention(query, key, value, env):
+  fsdp_partition = P(None, axis, None, None)
+
+  def wrap_flash_attention(query, key, value):
+    block_sizes = flash_attention.BlockSizes(
+        block_b=min(2, query.shape[0]),
+        block_q=min(2048, query.shape[2]),
+        block_k_major=min(2048, key.shape[2]),
+        block_k=min(2048, key.shape[2]),
+        block_q_major_dkv=min(2048, query.shape[2]),
+        block_k_major_dkv=min(2048, key.shape[2]),
+        block_k_dkv=min(2048, key.shape[2]),
+        block_q_dkv=min(2048, query.shape[2]),
+        block_k_major_dq=min(2048, key.shape[2]),
+        block_k_dq=min(256, key.shape[2]),
+        block_q_dq=min(1024, query.shape[2]),
+    )
+
+    sm_scale = 1 / math.sqrt(query.shape[-1])
+
+    # key shape: (1, head, seq, dim)
+    # pad key and value seq to a multiple of 512 block size for flash attention
+    seq_len = key.shape[2]
+    pad_to = 2048
+    q_segment_ids = jnp.ones((query.shape[0], query.shape[2]), dtype=jnp.int32)
+    kv_segment_ids = jnp.ones((key.shape[0], key.shape[2]), dtype=jnp.int32)
+    segment_ids = flash_attention.SegmentIds(q_segment_ids, kv_segment_ids)
+    if seq_len % pad_to != 0:
+        padding_needed = pad_to - (seq_len % pad_to)
+        pad_width = [(0,0) for _ in range(len(key.shape))]
+        pad_width[-2] = (0, padding_needed)
+        padded_key = jnp.pad(key, pad_width)
+        padded_value = jnp.pad(value, pad_width)
+        segment_ids = flash_attention.SegmentIds(q_segment_ids, jnp.pad(segment_ids.kv, ((0, 0), (0, padding_needed))))
+    else:
+        padded_key = key
+        padded_value = value
+
+    return flash_attention.flash_attention(
+        query, padded_key, padded_value, segment_ids=segment_ids, causal=False, block_sizes=block_sizes, sm_scale=sm_scale)
+
+  if env.config.shmap_flash_attention:
+    wrap_flash_attention = shard_map(
+        wrap_flash_attention,
+        mesh=env._mesh,
+        in_specs=(fsdp_partition, fsdp_partition, fsdp_partition),
+        out_specs=fsdp_partition,
+        check_rep=False,
+    )
+  # return flash_attn_mapped(query, key, value)
+  return wrap_flash_attention(query, key, value)
+
+def scaled_dot_product_attention(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    scale=None,
+    enable_gqa=False,
+    env=None,
+) -> torch.Tensor:
+  if env.config.use_tpu_flash_attention:
+    jquery, jkey, jvalue = env.t2j_iso((query, key, value))
+    res = _tpu_flash_attention(jquery, jkey, jvalue, env)
+    return env.j2t_iso(res)
+
+  return _sdpa_reference(query, key, value, attn_mask, dropout_p, is_causal,
+                         scale, enable_gqa)
+
+###
+
 def main():
   torch.set_default_dtype(torch.bfloat16)
   # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
@@ -219,6 +334,21 @@ def main():
   env._mesh = mesh
   env.config.use_tpu_flash_attention = True
   env.config.shmap_flash_attention = True
+
+  # Override flash attention with custom function
+  custom_attention = functools.partial(scaled_dot_product_attention, env=env)
+  # Workaround for the function lack is_view_op argument
+  # env.override_op_definition(torch.nn.functional.scaled_dot_product_attention, custom_attention)
+  op_to_override = torch.nn.functional.scaled_dot_product_attention
+  op_impl = custom_attention
+  env._ops[op_to_override] = ops_registry.Operator(
+        op_to_override,
+        op_impl,
+        is_jax_function=False,
+        is_user_defined=True,
+        needs_env=False,
+        is_view_op=False,
+    )
 
 
   vae_options = torchax.CompileOptions(
