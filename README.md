@@ -168,5 +168,5 @@ Flash attention prevent the huge attention weight which cause OOM.
 1.3B model is not yet ready using flash attention since kv_head = 12 cannot divide by 8 tpus.
 Disable flash attention for VAE for now since kv_head = 1 in VAE.
 
-Iteration 0: 952.361927s
-Iteration 1: 675.130811s
+Modify flash attention block size to 2048
+528s
