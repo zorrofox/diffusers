@@ -122,6 +122,37 @@ text_encoder_shardings = {
   # 'encoder.final_layer_norm.weight': (), # (torch.Size([4096]), torch.bfloat16)
 }
 
+vae_shardings = {
+    # Shard convolutional layers on the output channel dimension.
+    # This is a general strategy for both 2D and 3D convolutions in the VAE.
+    r'encoder\.conv_in\.weight': (axis,),
+    r'decoder\.conv_in\.weight': (axis,),
+    r'encoder\.conv_out\.weight': (axis,),
+    r'.*\.down_blocks\.\d+\.resnets\.\d+\.conv\d?\.weight': (axis,),
+    r'.*\.down_blocks\.\d+\.downsamplers\.\d+\.conv\.weight': (axis,),
+    r'.*\.up_blocks\.\d+\.resnets\.\d+\.conv\d?\.weight': (axis,),
+    r'.*\.up_blocks\.\d+\.upsamplers\.\d+\.conv\.weight': (axis,),
+    r'.*\.mid_block\.resnets\.\d+\.conv\d?\.weight': (axis,),
+
+    # Shard biases along the same dimension.
+    r'encoder\.conv_in\.bias': (axis,),
+    r'decoder\.conv_in\.bias': (axis,),
+    r'encoder\.conv_out\.bias': (axis,),
+    r'.*\.down_blocks\.\d+\.resnets\.\d+\.conv\d?\.bias': (axis,),
+    r'.*\.down_blocks\.\d+\.downsamplers\.\d+\.conv\.bias': (axis,),
+    r'.*\.up_blocks\.\d+\.resnets\.\d+\.conv\d?\.bias': (axis,),
+    r'.*\.up_blocks\.\d+\.upsamplers\.\d+\.conv\.bias': (axis,),
+    r'.*\.mid_block\.resnets\.\d+\.conv\d?\.bias': (axis,),
+
+    # Shard attention block projections using model parallelism. This avoids issues with head sharding when num_heads=1.
+    r'.*\.attentions\.\d+\.to_q\.weight': (axis, None),
+    r'.*\.attentions\.\d+\.to_q\.bias': (axis,),
+    r'.*\.attentions\.\d+\.to_k\.weight': (axis, None),
+    r'.*\.attentions\.\d+\.to_k\.bias': (axis,),
+    r'.*\.attentions\.\d+\.to_v\.weight': (axis, None),
+    r'.*\.attentions\.\d+\.to_v\.bias': (axis,),
+    r'.*\.attentions\.\d+\.to_out\.0\.weight': (None, axis),
+}
 
 def _shard_weight_dict(weight_dict, sharding_dict, mesh):
   result = {}
@@ -257,8 +288,8 @@ def main():
 
 
   # NOTE this will effectively replicate vae
-  pipe.vae.params = _shard_weight_dict(pipe.vae.params, {}, mesh)
-  pipe.vae.buffers = _shard_weight_dict(pipe.vae.buffers, {}, mesh)
+  pipe.vae.params = _shard_weight_dict(pipe.vae.params, vae_shardings, mesh)
+  pipe.vae.buffers = _shard_weight_dict(pipe.vae.buffers, vae_shardings, mesh)
 
   def move_scheduler(scheduler):
     for k, v in scheduler.__dict__.items():
