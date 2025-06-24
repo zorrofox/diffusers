@@ -312,7 +312,7 @@ def main():
 
       if i == 0:
         current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"{current_datetime}.mp4"
+        file_name = f"/tmp/{current_datetime}.mp4"
         export_to_video(output, file_name, fps=FPS)
         print(f"output video done. {file_name}")
     print('DONE')
