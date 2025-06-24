@@ -56,6 +56,8 @@ FPS = 16
 NUM_STEP = 50
 # NUM_STEP = 1
 
+PROFILE_OUT_PATH = "/tmp/tensorboard"
+
 ####
 
 
@@ -415,37 +417,56 @@ def main():
 
 
   with mesh:
-    outputs = []
-    for i in range(5):
+    # warm up and save video
+    output = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=HEIGHT,
+        width=WIDTH,
+        num_inference_steps=NUM_STEP,
+        num_frames=FRAMES,
+        guidance_scale=5.0,
+    ).frames[0]
+    current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = f"{current_datetime}.mp4"
+    export_to_video(output, file_name, fps=FPS)
+    print(f"output video done. {file_name}")
+    
+    # profile set fewer step and output latent to skip VAE for now
+    # output_type='latent' will skip VAE
+    jax.profiler.start_trace(PROFILE_OUT_PATH)
+    output = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=HEIGHT,
+        width=WIDTH,
+        num_inference_steps=2,
+        num_frames=FRAMES,
+        guidance_scale=5.0,
+        output_type="latent",
+    )
+    jax.effects_barrier()
+    jax.profiler.stop_trace()
+    print("profile done")
+    
+    # Benchmark loop
+    for i in range(2):
       start = time.perf_counter()
-      if i == 3:
-        jax.profiler.start_trace('/tmp/profiler/wan')
       output = pipe(
           prompt=prompt,
           negative_prompt=negative_prompt,
           height=HEIGHT,
           width=WIDTH,
-          # num_inference_steps=50,
           num_inference_steps=NUM_STEP,
-          # height=720,
-          # width=1280,
-          num_frames=FRAMES, ### YYY: OOM use 41, need 81
+          num_frames=FRAMES,
           guidance_scale=5.0,
-          ).frames[0]
-      if i == 4:
-        jax.effects_barrier()
-        jax.profiler.stop_trace()
-        break
+      )
+      # make sure all computation done
+      jax.effects_barrier()
       end = time.perf_counter()  
       print(f'Iteration {i}: {end - start:.6f}s')
-      outputs.append(output)
-
-      if i == 0:
-        current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"{current_datetime}.mp4"
-        export_to_video(output, file_name, fps=FPS)
-        print(f"output video done. {file_name}")
-    print('DONE')
+        
+  print('DONE')
 
   #print(f'生成视频时长= {(num_frams-1)/fps} - 目前针对1.3B生成5s = (41-1)/8)
 
