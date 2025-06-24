@@ -302,6 +302,12 @@ def scaled_dot_product_attention(
 ###
 
 def main():
+  # Set JAX config to enable compilation cache
+  jax.config.update("jax_compilation_cache_dir", "/dev/shm/jax_cache")
+  jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+  jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+  jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+
   torch.set_default_dtype(torch.bfloat16)
   # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
   #model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
