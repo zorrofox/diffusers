@@ -41,27 +41,29 @@ MODEL_ID = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
 # HEIGHT = 480
 # 720p
 FLOW_SHIFT = 5.0 # 5.0 for 720P, 3.0 for 480P
-WIDTH = 1024
-HEIGHT = 768
+WIDTH = 1280
+HEIGHT = 720
 
 # 41 frames
 # FRAMES = 41
 # FPS = 8
 
 # 81 frames
-FRAMES = 61
-FPS = 12
+FRAMES = 81
+FPS = 16
 
 # step
 NUM_STEP = 50
 # NUM_STEP = 1
 
+BQSIZE = 1512
+BKVSIZE = 2048
+
 # <--- NEW: Local Attention Window Size Setting --->
 # window_size = (left, right). (128, 0) means each token can attend to itself and the previous 128 tokens.
 # Set right=0 to maintain causality for autoregressive models.
 # Set to None to use the original full Causal Attention.
-#WINDOW_SIZE = None
-WINDOW_SIZE = (61440, 61440) 
+WINDOW_SIZE = None
 
 PROFILE_OUT_PATH = "/tmp/tensorboard"
 
@@ -243,33 +245,60 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
     mesh = env._mesh
     num_heads = query.shape[1]
 
+    # Debug print to check window_size
+    # print(f"[DEBUG] _tpu_splash_attention called with window_size={window_size}")
+
     # The function that will be sharded across devices.
     def _attention_on_slices(q, k, v):
+        import jax.numpy as jnp
         # Scale the query tensor. This happens on each device with its slice of data.
         scale_factor = 1.0 / math.sqrt(q.shape[-1]) if scale is None else scale
         q = q * scale_factor
 
+        # Helper to pad to next multiple
+        def pad_to_multiple(x, multiple, axis):
+            seq_len = x.shape[axis]
+            pad_len = (multiple - seq_len % multiple) % multiple
+            if pad_len == 0:
+                return x, seq_len
+            pad_width = [(0, 0)] * x.ndim
+            pad_width[axis] = (0, pad_len)
+            return jnp.pad(x, pad_width), seq_len
+
+        # This function operates on a single item from the batch.
         def kernel_3d(q_3d, k_3d, v_3d):
             q_seq_len = q_3d.shape[1]
             kv_seq_len = k_3d.shape[1]
             num_heads_on_device = q_3d.shape[0]
 
+            # Pad q, k, v to next multiple of BQSIZE/BKVSIZE
+            q_3d_padded, q_orig_len = pad_to_multiple(q_3d, BQSIZE, axis=1)
+            k_3d_padded, k_orig_len = pad_to_multiple(k_3d, BKVSIZE, axis=1)
+            v_3d_padded, v_orig_len = pad_to_multiple(v_3d, BKVSIZE, axis=1)
+
+            padded_q_seq_len = q_3d_padded.shape[1]
+            padded_kv_seq_len = k_3d_padded.shape[1]
+
+            # ======================= NEW MASK LOGIC =======================
             if window_size is not None:
                 mask_class = functools.partial(splash_attention.LocalMask, window_size=window_size, offset=0)
             else:
                 mask_class = splash_attention.FullMask
 
             mask = splash_attention.MultiHeadMask(
-                [mask_class((q_seq_len, kv_seq_len)) for _ in range(num_heads_on_device)]
+                [mask_class((padded_q_seq_len, padded_kv_seq_len)) for _ in range(num_heads_on_device)]
             )
+            # =============================================================
 
             block_sizes = splash_attention.BlockSizes(
-                block_q=min(512, q_seq_len), block_kv=min(512, kv_seq_len)
+                block_q=min(BQSIZE, padded_q_seq_len), block_kv=min(BKVSIZE, padded_kv_seq_len)
             )
             splash_kernel = splash_attention.make_splash_mha(
                 mask=mask, block_sizes=block_sizes, head_shards=1, q_seq_shards=1
             )
-            return splash_kernel(q_3d, k_3d, v_3d)
+            out = splash_kernel(q_3d_padded, k_3d_padded, v_3d_padded)
+            # Remove padding if any
+            return out[:, :q_orig_len, ...]
 
         # Map the kernel over the batch dimension.
         vmapped_kernel = jax.vmap(kernel_3d, in_axes=(0, 0, 0), out_axes=0)
@@ -307,12 +336,32 @@ def scaled_dot_product_attention(
     env=None,
     window_size=None, # <--- NEW
 ) -> torch.Tensor:
+  # Debug prints to understand what's happening
+  #print(f"[DEBUG] scaled_dot_product_attention called with:")
+  #print(f"  query.shape={query.shape}")
+  #print(f"  key.shape={key.shape}")
+  #print(f"  value.shape={value.shape}")
+  #print(f"  query.shape[-1]={query.shape[-1]}")
+  #print(f"  window_size={window_size}")
+  #print(f"  env.config.use_tpu_splash_attention={env.config.use_tpu_splash_attention if env else 'None'}")
+
+  # <--- MODIFIED: Disable splash attention for VAE --->
+  # VAE typically has different attention patterns, disable splash attention for it
+  # Check if this is likely VAE attention by looking at the shape
+  if query.shape[-1] >= 384:  # VAE typically has larger hidden dimensions (384)
+    #print(f"[DEBUG] Using reference implementation (VAE detected)")
+    # Use reference implementation for VAE
+    return _sdpa_reference(query, key, value, attn_mask, dropout_p, is_causal,
+                           scale, enable_gqa)
+  
   if env.config.use_tpu_splash_attention:
+    #print(f"[DEBUG] Using splash attention")
     jquery, jkey, jvalue = env.t2j_iso((query, key, value))
     # <--- MODIFIED: Pass window_size to the backend function --->
     res = _tpu_splash_attention(jquery, jkey, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
     return env.j2t_iso(res)
 
+  #print(f"[DEBUG] Using reference implementation (fallback)")
   return _sdpa_reference(query, key, value, attn_mask, dropout_p, is_causal,
                          scale, enable_gqa)
 
@@ -476,7 +525,7 @@ def main():
     print("profile done")
     
     # Benchmark loop
-    for i in range(2):
+    for i in range(1):
       start = time.perf_counter()
       output = pipe(
           prompt=prompt,
