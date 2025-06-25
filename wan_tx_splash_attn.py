@@ -23,7 +23,7 @@ from transformers import modeling_outputs
 from datetime import datetime
 
 # import torchax.ops.jtorch
-
+import traceback
 
 #### SETTINGS
 # 1.3B
@@ -53,8 +53,15 @@ FRAMES = 61
 FPS = 12
 
 # step
-NUM_STEP = 10
+NUM_STEP = 50
 # NUM_STEP = 1
+
+# <--- NEW: Local Attention Window Size Setting --->
+# window_size = (left, right). (128, 0) means each token can attend to itself and the previous 128 tokens.
+# Set right=0 to maintain causality for autoregressive models.
+# Set to None to use the original full Causal Attention.
+#WINDOW_SIZE = None
+WINDOW_SIZE = (61440, 61440) 
 
 PROFILE_OUT_PATH = "/tmp/tensorboard"
 
@@ -229,7 +236,8 @@ def _sdpa_reference(
   return attn_weight @ value
 
 
-def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False):
+# <--- MODIFIED: Added window_size parameter to the function signature --->
+def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, window_size=None):
     import jax
     import math
     mesh = env._mesh
@@ -241,21 +249,20 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False):
         scale_factor = 1.0 / math.sqrt(q.shape[-1]) if scale is None else scale
         q = q * scale_factor
 
-        # This function operates on a single item from the batch.
         def kernel_3d(q_3d, k_3d, v_3d):
             q_seq_len = q_3d.shape[1]
             kv_seq_len = k_3d.shape[1]
             num_heads_on_device = q_3d.shape[0]
 
-            # Select mask type based on is_causal flag.
-            if is_causal:
-                mask_class = splash_attention.CausalMask
+            if window_size is not None:
+                mask_class = functools.partial(splash_attention.LocalMask, window_size=window_size, offset=0)
             else:
                 mask_class = splash_attention.FullMask
 
             mask = splash_attention.MultiHeadMask(
                 [mask_class((q_seq_len, kv_seq_len)) for _ in range(num_heads_on_device)]
             )
+
             block_sizes = splash_attention.BlockSizes(
                 block_q=min(512, q_seq_len), block_kv=min(512, kv_seq_len)
             )
@@ -287,6 +294,7 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False):
     return sharded_fn(query, key, value)
 
 
+# <--- MODIFIED: Added window_size parameter to the function signature --->
 def scaled_dot_product_attention(
     query,
     key,
@@ -297,10 +305,12 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
     env=None,
+    window_size=None, # <--- NEW
 ) -> torch.Tensor:
   if env.config.use_tpu_splash_attention:
     jquery, jkey, jvalue = env.t2j_iso((query, key, value))
-    res = _tpu_splash_attention(jquery, jkey, jvalue, env, scale=scale, is_causal=is_causal)
+    # <--- MODIFIED: Pass window_size to the backend function --->
+    res = _tpu_splash_attention(jquery, jkey, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
     return env.j2t_iso(res)
 
   return _sdpa_reference(query, key, value, attn_mask, dropout_p, is_causal,
@@ -309,6 +319,12 @@ def scaled_dot_product_attention(
 ###
 
 def main():
+  # Set JAX config to enable compilation cache
+  jax.config.update("jax_compilation_cache_dir", "/dev/shm/jax_cache")
+  jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+  jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+  jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+
   torch.set_default_dtype(torch.bfloat16)
   # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
   #model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
@@ -343,8 +359,12 @@ def main():
   env._mesh = mesh
   env.config.use_tpu_splash_attention = True
 
-  # Override flash attention with custom function
-  custom_attention = functools.partial(scaled_dot_product_attention, env=env)
+  # <--- MODIFIED: Override flash attention with custom function, now with window_size --->
+  custom_attention = functools.partial(
+      scaled_dot_product_attention,
+      env=env,
+      window_size=WINDOW_SIZE # Inject the global window size setting here
+  )
   # Workaround for the function lack is_view_op argument
   # env.override_op_definition(torch.nn.functional.scaled_dot_product_attention, custom_attention)
   op_to_override = torch.nn.functional.scaled_dot_product_attention
