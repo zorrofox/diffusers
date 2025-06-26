@@ -160,8 +160,6 @@ The root cause is likely the self-attention calculation itself being altered by 
 
 ### support flash attention
 
-Patch the torachax/ops/jtorch.py into the pytorch/xla/torachax repo.
-
 Current support flash attention to generate correct normal 14B model, 81 frames videos.
 Flash attention prevent the huge attention weight which cause OOM.
 
@@ -170,3 +168,67 @@ Disable flash attention for VAE for now since kv_head = 1 in VAE.
 
 Modify flash attention block size to 2048
 528s
+
+
+### multi-host run on v6e-16
+
+1. create tpu vm with v6e-16.
+  1. it will create 4 hosts with 4x4 gpus mesh
+  2. all the command use gcloud to distribute to all workers.
+
+```
+# Remember to replace variable in placeholder
+# setup env
+export PROJECT_ID=<project_id>
+export TPU_NAME=<tpu_name>
+export ZONE=<zone>
+export ACCELERATOR_TYPE=v6e-16
+export RUNTIME_VERSION=v2-alpha-tpuv6e
+
+export ACCOUNT=<account>
+export GITHUB_BRANCH=<branch_name>
+export GITHUB_ADDRESS=<github_repo_address>
+
+run()
+{
+  local command=$1
+  local worker=${2:-all}
+  gcloud compute tpus tpu-vm ssh --zone "${ZONE}" "${ACCOUNT}@${TPU_NAME}" --project "${PROJECT_ID}" --worker=${worker} --command="$command"
+}
+
+
+SETUP_COMMAND="\
+set -x && \
+sudo apt update && \
+sudo apt install -y python3.10-venv && \
+python -m venv venv && \
+source venv/bin/activate && \
+pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+pip install jax[tpu] && \
+pip install transformers accelerate ftfy tpu-info imageio imageio-ffmpeg tensorflow && \
+pip install git+https://github.com/pytorch/xla.git@hanq_wan_changes#subdirectory=torchax && \
+git clone -b ${GITHUB_BRANCH} ${GITHUB_ADDRESS} || true && \
+cd diffusers && \
+pip install -e . \
+"
+# Only need run the first time
+# run "${SETUP_COMMAND}"
+
+RUN_COMMAND="\
+set -x && \
+source ~/venv/bin/activate && \
+killall -9 python || true && \
+sleep 10 && \
+export JAX_COMPILATION_CACHE_DIR="/dev/shm/jax_cache" && \
+export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=-1 && \
+export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=0 && \
+export JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES='xla_gpu_per_fusion_autotune_cache_dir' && \
+export HF_HUB_CACHE=/dev/shm/hf_cache && \
+cd diffusers && \
+git fetch && git reset --hard origin/${GITHUB_BRANCH} && \
+nohup python wan_tx.py > wan_tx.log 2>&1 & \
+"
+run "${RUN_COMMAND}"
+
+```
+ssh into a VM to collect the log in wan_tx.log and video generated.

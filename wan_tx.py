@@ -139,7 +139,6 @@ def _shard_weight_dict(weight_dict, sharding_dict, mesh):
     else:
       # replicate
       v.apply_jax_(jax.device_put, NamedSharding(mesh, P()))
-
     result[k] = v
   return result
 
@@ -422,6 +421,9 @@ def main():
   negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
 
+  # Set seed to produce identical init state across multi-host
+  generator = torch.Generator()
+  generator.manual_seed(42)
   with mesh:
     # warm up and save video
     output = pipe(
@@ -432,6 +434,7 @@ def main():
         num_inference_steps=NUM_STEP,
         num_frames=FRAMES,
         guidance_scale=5.0,
+        generator=generator,
     ).frames[0]
     current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = f"{current_datetime}.mp4"
@@ -450,6 +453,7 @@ def main():
         num_frames=FRAMES,
         guidance_scale=5.0,
         output_type="latent",
+        generator=generator,
     )
     jax.effects_barrier()
     jax.profiler.stop_trace()
@@ -466,6 +470,7 @@ def main():
           num_inference_steps=NUM_STEP,
           num_frames=FRAMES,
           guidance_scale=5.0,
+          generator=generator,
       )
       # make sure all computation done
       jax.effects_barrier()
