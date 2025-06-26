@@ -158,6 +158,29 @@ The root cause is likely the self-attention calculation itself being altered by 
 
 ```
 
+### wan_tx_splash_attn.py combine the jax pallas splash attention, maxdiffusion vae decoder
+
+```
+# on v6e-8:
+
+(venv)$ python wan_tx_splash_attn.py
+Load and port Wan 2.1 VAE on tpu
+Loading checkpoint shards: 100%|██████████████████████████████████████████████████████████████| 12/12 [00:01<00:00, 10.11it/s]
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████| 5/5 [00:01<00:00,  4.60it/s]
+Loading pipeline components...: 100%|███████████████████████████████████████████████████████████| 5/5 [00:03<00:00,  1.63it/s]
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+Number of devices is:,  8
+text_encoder 12.537574768066406 G
+transformer 26.66874897480011 G
+vae (JAX VAE) - size calculation not implemented
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+100%|█████████████████████████████████████████████████████████████████████████████████████████| 50/50 [08:16<00:00,  9.94s/it]
+numpy shape: (720, 1280, 3, 81)
+100%|█████████████████████████████████████████████████████████████████████████████████████████| 50/50 [06:29<00:00,  7.80s/it]
+Iteration 0: 418.294946s
+DONE
+```
+
 ### support flash attention
 
 Current support flash attention to generate correct normal 14B model, 81 frames videos.
