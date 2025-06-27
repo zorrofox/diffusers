@@ -547,9 +547,6 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     timestep = t.expand(latents.shape[0])
                     encoder_hidden_state = torch.cat([prompt_embeds, negative_prompt_embeds])
 
-                    latent_model_input.apply_jax_(jax.device_put, NamedSharding(env._mesh, P("dp")))
-                    encoder_hidden_state.apply_jax_(jax.device_put, NamedSharding(env._mesh, P("dp")))
-
                     stacked_noise = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,

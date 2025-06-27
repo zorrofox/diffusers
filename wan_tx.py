@@ -60,7 +60,7 @@ NUM_STEP = 50
 
 PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
-USE_DP = False
+USE_DP = True
 
 
 ####
@@ -233,7 +233,7 @@ def _sdpa_reference(
   return attn_weight @ value
 
 def _tpu_flash_attention(query, key, value, env):
-  fsdp_partition = P(None, axis, None, None)
+  fsdp_partition = P('dp', axis, None, None)
 
   def wrap_flash_attention(query, key, value):
     block_sizes = flash_attention.BlockSizes(
@@ -342,6 +342,7 @@ def main():
   env = torchax.default_env()
   tp_dim, dp_dim = len(jax.devices()), 1
   if USE_DP or tp_dim > 8:
+    # tp_dim > 8, which is v6e-16, could not divide head_dim=40, need use dp
     print(f"{USE_DP=}, it need to use dp at v6e-16")
     tp_dim //= 2
     dp_dim = 2
