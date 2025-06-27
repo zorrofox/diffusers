@@ -263,6 +263,6 @@ v6e-16 need use DP to divide head_dim=40 .
 
 test using flash attention:  
 * v6e-8 with dp=2, tp=4:  
-    * 528s -> 761s  
+    * 528s -> 490s  
 * v6e-16 with dp=2, tp=8:
-    * 488s
+    * 358s
