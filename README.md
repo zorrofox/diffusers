@@ -9,6 +9,10 @@ pip install transformers accelerate
 pip install git+https://github.com/pytorch/xla.git@hanq_wan_changes#subdirectory=torchax
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install jax[tpu]
+
+# additional dependency with VAE from maxdiffusion
+pip install flax
+pip install git+https://github.com/AI-Hypercomputer/maxdiffusion
 ```
 
 To run:
@@ -230,6 +234,8 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu && \
 pip install jax[tpu] && \
 pip install transformers accelerate ftfy tpu-info imageio imageio-ffmpeg tensorflow && \
 pip install git+https://github.com/pytorch/xla.git@hanq_wan_changes#subdirectory=torchax && \
+pip install flax && \
+pip install git+https://github.com/AI-Hypercomputer/maxdiffusion && \
 git clone -b ${GITHUB_BRANCH} ${GITHUB_ADDRESS} || true && \
 cd diffusers && \
 pip install -e . \
@@ -266,3 +272,8 @@ test using flash attention:
     * 528s -> 490s  
 * v6e-16 with dp=2, tp=8:
     * 358s
+
+With wan_tx_splash_attn:
+Do not support DP on v6e-8 for now. The VAE will OOM.
+* v6e-16 with dp=2, tp=8:
+  * 257s
