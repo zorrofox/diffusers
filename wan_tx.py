@@ -11,6 +11,8 @@ import jax.numpy as jnp
 from jax.experimental.pallas.ops.tpu import flash_attention
 from jax.experimental.shard_map import shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
+from jax.sharding import Mesh
+from jax.experimental import mesh_utils
 
 from diffusers.utils import export_to_video
 from diffusers import AutoencoderKLWan, WanPipeline
@@ -56,7 +58,10 @@ FPS = 16
 NUM_STEP = 50
 # NUM_STEP = 1
 
-PROFILE_OUT_PATH = "/tmp/tensorboard"
+PROFILE_OUT_PATH = "/dev/shm/tensorboard"
+
+USE_DP = False
+
 
 ####
 
@@ -232,7 +237,7 @@ def _tpu_flash_attention(query, key, value, env):
 
   def wrap_flash_attention(query, key, value):
     block_sizes = flash_attention.BlockSizes(
-        block_b=min(2, query.shape[0]),
+        block_b=min(1, query.shape[0]),
         block_q=min(2048, query.shape[2]),
         block_k_major=min(2048, key.shape[2]),
         block_k=min(2048, key.shape[2]),
@@ -335,7 +340,14 @@ def main():
 
   torchax.enable_globally()
   env = torchax.default_env()
-  mesh = jax.make_mesh((len(jax.devices()),), (axis,))
+  tp_dim, dp_dim = len(jax.devices()), 1
+  if USE_DP or tp_dim > 8:
+    print(f"{USE_DP=}, it need to use dp at v6e-16")
+    tp_dim //= 2
+    dp_dim = 2
+  # mesh = jax.make_mesh((tp_dim, dp_dim), (axis,'dp'))
+  mesh_devices = mesh_utils.create_device_mesh((tp_dim, dp_dim), allow_split_physical_axes=True)
+  mesh = Mesh(mesh_devices, (axis,'dp'))
   env.default_device_or_sharding = NamedSharding(mesh, P())
 
   env._mesh = mesh
@@ -435,6 +447,7 @@ def main():
         num_frames=FRAMES,
         guidance_scale=5.0,
         generator=generator,
+        use_dp=USE_DP,
     ).frames[0]
     current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = f"{current_datetime}.mp4"
@@ -454,6 +467,7 @@ def main():
         guidance_scale=5.0,
         output_type="latent",
         generator=generator,
+        use_dp=USE_DP,
     )
     jax.effects_barrier()
     jax.profiler.stop_trace()
@@ -471,6 +485,7 @@ def main():
           num_frames=FRAMES,
           guidance_scale=5.0,
           generator=generator,
+          use_dp=USE_DP,
       )
       # make sure all computation done
       jax.effects_barrier()
