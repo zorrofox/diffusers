@@ -12,6 +12,8 @@ import numpy as np
 from jax.experimental.pallas.ops.tpu import splash_attention
 from jax.experimental.shard_map import shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
+from jax.sharding import Mesh
+from jax.experimental import mesh_utils
 
 # Add JAX VAE imports
 from flax import nnx
@@ -72,6 +74,8 @@ BKVSIZE = 2048 # 2304 # 1664 #2048
 WINDOW_SIZE = None
 
 PROFILE_OUT_PATH = "/tmp/tensorboard"
+
+USE_DP = True
 
 ####
 
@@ -316,7 +320,7 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
         partition_spec = P()
     else:
         # Sharded case for Transformer. Split along the heads axis.
-        partition_spec = P(None, 'axis', None, None)
+        partition_spec = P('dp', 'axis', None, None)
 
     # ALWAYS use shard_map. The partition_spec will control the behavior.
     sharded_fn = shard_map(
@@ -427,7 +431,7 @@ def load_wan_vae_fixed(pretrained_model_name_or_path: str, eval_shapes: dict, de
     from safetensors import safe_open
     from flax.traverse_util import unflatten_dict, flatten_dict
     
-    device_obj = jax.devices(device)[0]
+    device_obj = jax.local_devices(backend=device)[0]
     with jax.default_device(device_obj):
         if hf_download:
             ckpt_path = hf_hub_download(
@@ -573,7 +577,26 @@ def prepare_video_for_export(video):
     print("未知类型：", type(video))
     return video
 
+def sharded_device_put(tensor, sharding):
+  if isinstance(tensor, tuple):
+    return tuple(sharded_device_put(t, sharding) for t in tensor)
+  num_global_devices = jax.device_count()
+  num_local_devices = jax.local_device_count()
+
+  if num_global_devices == num_local_devices:
+    return jax.device_put(tensor, sharding)
+
+  shape = tensor.shape
+  x_split = [
+    jax.device_put(tensor[i], device)
+    for device, i in sharding.addressable_devices_indices_map(shape).items()
+  ]
+  return jax.make_array_from_single_device_arrays(shape, sharding, x_split)
+
 def main():
+  # For modify depend on host devices
+  global USE_DP
+  
   # Set JAX config to enable compilation cache
   jax.config.update("jax_compilation_cache_dir", "/dev/shm/jax_cache")
   jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -590,7 +613,23 @@ def main():
   torchax.enable_globally()
   env = torchax.default_env()
   # Create a 2D mesh for FSDP sharding
-  mesh = jax.make_mesh((len(jax.devices()), 1), (axis, 'fsdp'))
+  
+  tp_dim, dp_dim = len(jax.devices()), 1
+  if USE_DP and tp_dim <= 8:
+     print("X"*30)
+     print("WARNING: DP will OOM in VAE on v6e-8. Need To Fix. Disable DP.")
+     print("X"*30)
+     USE_DP = False
+  elif USE_DP and tp_dim > 8:
+    # tp_dim > 8, which is v6e-16, could not divide head_dim=40, need use dp
+    print(f"{USE_DP=}, it need to use dp at v6e-16")
+    tp_dim //= 2
+    dp_dim = 2
+    USE_DP = True
+  # mesh = jax.make_mesh((len(jax.devices()), 1), (axis, 'fsdp'))
+  mesh_devices = mesh_utils.create_device_mesh((tp_dim, dp_dim), allow_split_physical_axes=True)
+  mesh = Mesh(mesh_devices, (axis,'dp'))
+
   env.default_device_or_sharding = NamedSharding(mesh, P())
   env._mesh = mesh
   env.config.use_tpu_splash_attention = True
@@ -620,7 +659,7 @@ def main():
   params = load_wan_vae_fixed(model_id, params, "tpu")
   # 保证全部 replicate 到 mesh 上所有 device
   sharding = NamedSharding(mesh, P())
-  params = jax.tree_util.tree_map(lambda x: jax.device_put(x, sharding), params)
+  params = jax.tree_util.tree_map(lambda x: sharded_device_put(x, sharding), params)
   params = jax.tree_util.tree_map(lambda x: x.astype(jnp.bfloat16), params)
   wan_vae = nnx.merge(graphdef, params)
   
@@ -765,7 +804,8 @@ def main():
   # prompt = "Drone view of waves crashing against the rugged cliffs along Big Sur's garay point beach.The crashing blue waters create white-tipped waves,while the golden light of the setting sun illuminates the rocky shore. A small island with a lighthouse sits in the distance, and greenshrubbery covers the cliffs edge. The steep drop from the road down to the beach is adramatic feat, with the cliff's edges jutting out over the sea. This is a view that captures the raw beauty of the coast and the rugged landscape of the Pacific Coast Highway."
   negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
-
+  generator = torch.Generator()
+  generator.manual_seed(42)
   with mesh:
     # warm up and save video
     output = pipe(
@@ -776,6 +816,8 @@ def main():
         num_inference_steps=NUM_STEP,
         num_frames=FRAMES,
         guidance_scale=5.0,
+        generator=generator,
+        use_dp=USE_DP,
     ).frames[0]
     #print("output type:", type(output))
     #if hasattr(output, 'shape'):
@@ -804,6 +846,8 @@ def main():
     #    num_frames=FRAMES,
     #    guidance_scale=5.0,
     #    output_type="latent",
+    #    generator=generator,
+    #    use_dp=USE_DP,
     #)
     #jax.effects_barrier()
     #jax.profiler.stop_trace()
@@ -820,6 +864,8 @@ def main():
           num_inference_steps=NUM_STEP,
           num_frames=FRAMES,
           guidance_scale=5.0,
+          generator=generator,
+          use_dp=USE_DP,
       )
       # make sure all computation done
       jax.effects_barrier()

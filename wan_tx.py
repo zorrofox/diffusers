@@ -306,6 +306,9 @@ def scaled_dot_product_attention(
 ###
 
 def main():
+  # For modify depend on host devices
+  global USE_DP
+
   # Set JAX config to enable compilation cache
   jax.config.update("jax_compilation_cache_dir", "/dev/shm/jax_cache")
   jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -341,11 +344,17 @@ def main():
   torchax.enable_globally()
   env = torchax.default_env()
   tp_dim, dp_dim = len(jax.devices()), 1
-  if USE_DP or tp_dim > 8:
-    # tp_dim > 8, which is v6e-16, could not divide head_dim=40, need use dp
-    print(f"{USE_DP=}, it need to use dp at v6e-16")
+  if tp_dim > 8:
+    print("X"*30)
+    print(f"tp_dim > 8, which is v6e-16, could not divide head_dim=40, need use dp. Enable it")
+    print("X"*30)
+    USE_DP = True
+
+  if USE_DP:
+    print(f"{USE_DP=}")
     tp_dim //= 2
-    dp_dim = 2
+    dp_dim = 2    
+  
   # mesh = jax.make_mesh((tp_dim, dp_dim), (axis,'dp'))
   mesh_devices = mesh_utils.create_device_mesh((tp_dim, dp_dim), allow_split_physical_axes=True)
   mesh = Mesh(mesh_devices, (axis,'dp'))
