@@ -277,3 +277,18 @@ With wan_tx_splash_attn:
 Do not support DP on v6e-8 for now. The VAE will OOM.
 * v6e-16 with dp=2, tp=8:
   * 257s
+
+
+### Add SP support
+
+test using flash attention wan_tx:  
+* v6e-8 with dp=1, tp=4, sp=2:  
+    * 519s  
+* v6e-8 with dp=2, tp=2, sp=2:
+    * VAE OOM
+* v6e-16 with dp=2, tp=4, sp=2:
+    * 319s
+
+test with wan_tx_splash_attn:
+* v6e-16 with dp=2, tp=4, sp=2:
+    * VAE OOM
