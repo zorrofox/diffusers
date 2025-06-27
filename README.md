@@ -255,3 +255,14 @@ run "${RUN_COMMAND}"
 
 ```
 ssh into a VM to collect the log in wan_tx.log and video generated.
+
+
+### Add DP support
+
+v6e-16 need use DP to divide head_dim=40 .
+
+test using flash attention:  
+* v6e-8 with dp=2, tp=4:  
+    * 528s -> 761s  
+* v6e-16 with dp=2, tp=8:
+    * 488s

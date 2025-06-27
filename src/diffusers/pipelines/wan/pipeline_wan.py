@@ -34,6 +34,9 @@ from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanPipelineOutput
 
 
+from jax.sharding import NamedSharding, PartitionSpec as P
+
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
@@ -389,6 +392,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        use_dp: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -528,35 +532,62 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
+        if use_dp:
+            assert self.do_classifier_free_guidance, "Current implementation only support stacking embeding unconditionally"
+            env = torchax.default_env()
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
-                timestep = t.expand(latents.shape[0])
+                if use_dp:
+                    self._current_timestep = t
+                    latent_model_input = torch.cat([latents, latents]).to(transformer_dtype)
+                    timestep = t.expand(latents.shape[0])
+                    encoder_hidden_state = torch.cat([prompt_embeds, negative_prompt_embeds])
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
+                    latent_model_input.apply_jax_(jax.device_put, NamedSharding(env._mesh, P("dp")))
+                    encoder_hidden_state.apply_jax_(jax.device_put, NamedSharding(env._mesh, P("dp")))
 
-                if self.do_classifier_free_guidance:
-                    noise_uncond = self.transformer(
+                    stacked_noise = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=encoder_hidden_state,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                    noise_pred, noise_pred_uncond = stacked_noise.chunk(2)
+                    noise_pred_effective = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred_effective, t, latents, return_dict=False)[0]
+                else:
+                    self._current_timestep = t
+                    latent_model_input = latents.to(transformer_dtype)
+                    timestep = t.expand(latents.shape[0])
+
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
+
+                    if self.do_classifier_free_guidance:
+                        noise_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
