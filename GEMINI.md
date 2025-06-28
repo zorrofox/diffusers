@@ -50,22 +50,10 @@ python wan_tx.py
 
 ### Testing
 
-The project uses `pytest`. To run the full test suite:
+The project uses `docker run` to test. To run the full test suite:
 
 ```bash
 make test
-```
-
-To run specific tests:
-
-```bash
-pytest tests/<TEST_TO_RUN>.py
-```
-
-To include slow tests, set the `RUN_SLOW` environment variable:
-
-```bash
-RUN_SLOW=yes pytest tests/<TEST_TO_RUN>.py
 ```
 
 ### Code Style & Linting

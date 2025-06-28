@@ -73,12 +73,34 @@ fix-copies:
 # Run tests for the library
 
 test:
-	python -m pytest -n auto --dist=loadfile -s -v ./tests/
+	docker run \
+    --network host \
+    --shm-size 10.24g \
+    --privileged \
+    --rm \
+    -e JAX_HBM_DEFRAGMENTATION_LEVEL=1 \
+    -v /data/tmp:/tmp \
+    -v /data/huggingface_cache:/root/.cache/huggingface \
+    -v /home/greg_greghuang_altostrat_com/diffusers:/root/diffusers \
+    us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:nightly_3.11_tpuvm_20250617 \
+    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax && \
+      python3 /root/diffusers/src/wan_tx_splash_attn.py"
 
 # Run tests for examples
 
-test-examples:
-	python -m pytest -n auto --dist=loadfile -s -v ./examples/
+test-wan:
+	docker run \
+    --network host \
+    --shm-size 10.24g \
+    --privileged \
+    --rm \
+    -e JAX_HBM_DEFRAGMENTATION_LEVEL=1 \
+    -v /data/tmp:/tmp \
+    -v /data/huggingface_cache:/root/.cache/huggingface \
+    -v /home/greg_greghuang_altostrat_com/diffusers:/root/diffusers \
+    us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:nightly_3.11_tpuvm_20250617 \
+    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax && \
+      python3 /root/diffusers/src/wan_tx.py"
 
 
 # Release stuff
