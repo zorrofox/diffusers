@@ -83,7 +83,9 @@ test:
     -v /data/huggingface_cache:/root/.cache/huggingface \
     -v /home/greg_greghuang_altostrat_com/diffusers:/root/diffusers \
     us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:nightly_3.11_tpuvm_20250617 \
-    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax && \
+    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax \
+	             git+https://github.com/pytorch/xla.git@hanq_wan_changes#subdirectory=torchax \
+	             git+https://github.com/AI-Hypercomputer/maxdiffusion && \
       python3 /root/diffusers/src/wan_tx_splash_attn.py"
 
 # Run tests for examples
@@ -99,8 +101,10 @@ test-wan:
     -v /data/huggingface_cache:/root/.cache/huggingface \
     -v /home/greg_greghuang_altostrat_com/diffusers:/root/diffusers \
     us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/xla:nightly_3.11_tpuvm_20250617 \
-    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax && \
-      python3 /root/diffusers/src/wan_tx.py"
+    bash -c "pip install -q transformers accelerate ftfy imageio opencv-python imageio-ffmpeg jax[tpu] flax  \
+	             git+https://github.com/pytorch/xla.git@hanq_wan_changes#subdirectory=torchax \
+	             git+https://github.com/AI-Hypercomputer/maxdiffusion && \
+      python3 /root/diffusers/src/wan_tx.py" 
 
 
 # Release stuff
