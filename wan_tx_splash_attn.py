@@ -360,14 +360,6 @@ def scaled_dot_product_attention(
   #print(f"  env.config.use_tpu_splash_attention={env.config.use_tpu_splash_attention if env else 'None'}")
 
   # <--- MODIFIED: Disable splash attention for VAE --->
-  # VAE typically has different attention patterns, disable splash attention for it
-  # Check if this is likely VAE attention by looking at the shape
-  if query.shape[-1] >= 385:  # VAE typically has larger hidden dimensions (384)
-    #print(f"[DEBUG] Using reference implementation (VAE detected)")
-    # Use reference implementation for VAE
-    return _sdpa_reference(query, key, value, attn_mask, dropout_p, is_causal,
-                           scale, enable_gqa)
-  
   if env.config.use_tpu_splash_attention:
     #print(f"[DEBUG] Using splash attention")
     jquery, jkey, jvalue = env.t2j_iso((query, key, value))
@@ -380,52 +372,6 @@ def scaled_dot_product_attention(
                          scale, enable_gqa)
 
 ###
-
-# Custom WanPipeline class to handle JAX VAE
-class JaxWanPipeline:
-    def __init__(self, original_pipeline, jax_vae, vae_cache):
-        self.original_pipeline = original_pipeline
-        self.jax_vae = jax_vae
-        self.vae_cache = vae_cache
-        self.scheduler = original_pipeline.scheduler
-        self.text_encoder = original_pipeline.text_encoder
-        self.transformer = original_pipeline.transformer
-        
-    def __call__(self, prompt, negative_prompt, height, width, num_inference_steps, num_frames, guidance_scale, output_type="pil"):
-        # Use original pipeline for everything except VAE
-        result = self.original_pipeline(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            height=height,
-            width=width,
-            num_inference_steps=num_inference_steps,
-            num_frames=num_frames,
-            guidance_scale=guidance_scale,
-            output_type="latent"  # Force latent output to use our JAX VAE
-        )
-        
-        if output_type == "latent":
-            return result
-        
-        # Decode latents using JAX VAE
-        latents = result.latents
-        # Convert torch tensor to jax array
-        latents_jax = jnp.array(latents.detach().cpu().numpy())
-        
-        # Decode using JAX VAE
-        decoded = self.jax_vae.decode(latents_jax, feat_cache=self.vae_cache)
-        video = decoded.sample
-        
-        # Convert back to torch tensor and format
-        video_torch = torch.from_numpy(np.array(video)).to(latents.device)
-        video_torch = video_torch.permute(0, 4, 1, 2, 3)  # (B, C, T, H, W)
-        
-        # Create result object similar to original pipeline
-        class Result:
-            def __init__(self, frames):
-                self.frames = frames
-        
-        return Result([video_torch])
 
 # Fix for torch2jax compatibility issue
 def load_wan_vae_fixed(pretrained_model_name_or_path: str, eval_shapes: dict, device: str, hf_download: bool = True):
