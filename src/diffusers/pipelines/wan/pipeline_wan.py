@@ -14,6 +14,7 @@
 
 from jax.sharding import PartitionSpec as P
 import jax
+import jax.numpy as jnp
 
 import html
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -97,6 +98,22 @@ def whitespace_clean(text):
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
+
+
+def safe_torch_to_jax(x, env):
+    # torch_xla 的 XLATensor
+    if 'xla' in str(type(x)).lower():
+        return env.t2j_iso(x)
+    # 普通 torch.Tensor
+    elif isinstance(x, torch.Tensor):
+        return jax.device_put(x.detach().cpu().to(torch.float32).numpy())
+    # 递归结构
+    elif isinstance(x, (list, tuple)):
+        return type(x)(safe_torch_to_jax(xx, env) for xx in x)
+    elif isinstance(x, dict):
+        return {k: safe_torch_to_jax(v, env) for k, v in x.items()}
+    else:
+        return x
 
 
 class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
@@ -485,6 +502,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         device = self._execution_device
 
+        env = torchax.default_env()
+
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -506,9 +525,6 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         transformer_dtype = self.transformer.dtype
-        prompt_embeds = prompt_embeds.to(transformer_dtype)
-        if negative_prompt_embeds is not None:
-            negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -534,6 +550,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if use_dp:
             assert self.do_classifier_free_guidance, "Current implementation only support stacking embeding unconditionally"
+        else:
             env = torchax.default_env()
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -547,6 +564,15 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     timestep = t.expand(latents.shape[0])
                     encoder_hidden_state = torch.cat([prompt_embeds, negative_prompt_embeds])
 
+                    # 根据 text_encoder 设备决定是否类型转换
+                    if str(self.text_encoder.device) == 'cpu':
+                        latent_model_input = safe_torch_to_jax(latent_model_input, env)
+                        if isinstance(latent_model_input, jnp.ndarray) or 'ArrayImpl' in str(type(latent_model_input)):
+                            latent_model_input = latent_model_input.astype(jnp.bfloat16)
+                        timestep = safe_torch_to_jax(timestep, env)
+                        encoder_hidden_state = safe_torch_to_jax(encoder_hidden_state, env)
+                    # TPU 路径无需转换
+
                     stacked_noise = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -558,12 +584,32 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     noise_pred, noise_pred_uncond = stacked_noise.chunk(2)
                     noise_pred_effective = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
-                    # compute the previous noisy sample x_t -> x_t-1
+                    if 'ArrayImpl' in str(type(noise_pred_effective)):
+                        noise_pred_effective = env.t2j_iso(noise_pred_effective)
+
+                    # 确保 latents 和 noise_pred_effective 都在 XLA/TPU 上
+                    if not hasattr(latents, 'device') or 'xla' not in str(latents.device):
+                        latents = latents.to('xla')
+                    if not hasattr(noise_pred_effective, 'device') or 'xla' not in str(noise_pred_effective.device):
+                        noise_pred_effective = noise_pred_effective.to('xla')
                     latents = self.scheduler.step(noise_pred_effective, t, latents, return_dict=False)[0]
+
+                    if 'ArrayImpl' in str(type(latents)):
+                        latents = env.t2j_iso(latents)
                 else:
                     self._current_timestep = t
                     latent_model_input = latents.to(transformer_dtype)
                     timestep = t.expand(latents.shape[0])
+
+                    # 根据 text_encoder 设备决定是否类型转换
+                    if str(self.text_encoder.device) == 'cpu':
+                        latent_model_input = safe_torch_to_jax(latent_model_input, env)
+                        if isinstance(latent_model_input, jnp.ndarray) or 'ArrayImpl' in str(type(latent_model_input)):
+                            latent_model_input = latent_model_input.astype(jnp.bfloat16)
+                        timestep = safe_torch_to_jax(timestep, env)
+                        if isinstance(prompt_embeds, torch.Tensor):
+                            prompt_embeds = safe_torch_to_jax(prompt_embeds, env)
+                    # TPU 路径无需转换
 
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -574,6 +620,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                     if self.do_classifier_free_guidance:
+                        if str(self.text_encoder.device) == 'cpu' and isinstance(negative_prompt_embeds, torch.Tensor):
+                            negative_prompt_embeds = safe_torch_to_jax(negative_prompt_embeds, env)
                         noise_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -583,8 +631,18 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         )[0]
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                    # compute the previous noisy sample x_t -> x_t-1
+                    if 'ArrayImpl' in str(type(noise_pred)):
+                        noise_pred = env.t2j_iso(noise_pred)
+
+                    # 确保 latents 和 noise_pred_effective 都在 XLA/TPU 上
+                    if not hasattr(latents, 'device') or 'xla' not in str(latents.device):
+                        latents = latents.to('xla')
+                    if not hasattr(noise_pred, 'device') or 'xla' not in str(noise_pred.device):
+                        noise_pred = noise_pred.to('xla')
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                    if 'ArrayImpl' in str(type(latents)):
+                        latents = env.t2j_iso(latents)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

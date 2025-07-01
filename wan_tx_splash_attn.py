@@ -65,7 +65,7 @@ FPS = 16
 NUM_STEP = 50
 # NUM_STEP = 1
 
-BQSIZE =  2520 # 2240 # 3024 #2520
+BQSIZE =  2656 # 2240 # 3024 #2520
 BKVSIZE = 2048 # 2304 # 1664 #2048
 
 # <--- NEW: Local Attention Window Size Setting --->
@@ -76,8 +76,8 @@ WINDOW_SIZE = None
 
 PROFILE_OUT_PATH = "/tmp/tensorboard"
 
-USE_DP = False
-SP_NUM = 1
+USE_DP = True
+SP_NUM = 2
 
 ####
 
@@ -256,9 +256,6 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
     import math
     mesh = env._mesh
     num_heads = query.shape[1]
-
-    # Debug print to check window_size
-    # print(f"[DEBUG] _tpu_splash_attention called with window_size={window_size}")
 
     # The function that will be sharded across devices.
     def _attention_on_slices(q, k, v):
@@ -698,8 +695,15 @@ def main():
   # _move_module(pipe.vae)
   # pipe.vae = torchax.compile(pipe.vae)
   
-  _move_module(pipe.text_encoder)
-  pipe.text_encoder = torchax.compile(pipe.text_encoder)
+  if args.t5_cpu:
+    # 只把 text_encoder 移到 CPU，不做 compile 和 shard
+    pipe.text_encoder.to("cpu")
+  else:
+    # TPU 路径，做 compile 和 shard
+    _move_module(pipe.text_encoder)
+    pipe.text_encoder = torchax.compile(pipe.text_encoder)
+    pipe.text_encoder.params = _shard_weight_dict(pipe.text_encoder.params, text_encoder_shardings, mesh)
+    pipe.text_encoder.buffers = _shard_weight_dict(pipe.text_encoder.buffers, text_encoder_shardings, mesh)
 
   # the param below is not declared as param or buffer so the module.to('jax') didnt work
   _move_module(pipe.transformer)
@@ -717,12 +721,6 @@ def main():
                                                mesh)
   pipe.transformer.buffers = _shard_weight_dict(pipe.transformer.buffers, 
                                                transformer_shardings,
-                                               mesh)
-  pipe.text_encoder.params = _shard_weight_dict(pipe.text_encoder.params, 
-                                               text_encoder_shardings,
-                                               mesh)
-  pipe.text_encoder.buffers = _shard_weight_dict(pipe.text_encoder.buffers, 
-                                               text_encoder_shardings,
                                                mesh)
 
   # Skip VAE sharding as it's already JAX and handled differently
@@ -828,6 +826,7 @@ def parse_args():
     parser.add_argument("--window_size", type=int, nargs=2, default=None)
     parser.add_argument("--use_dp", action="store_true", default=USE_DP)
     parser.add_argument("--sp_num", type=int, default=SP_NUM)
+    parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
     return parser.parse_args()
 
 if __name__ == '__main__':
