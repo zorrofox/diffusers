@@ -77,7 +77,7 @@ WINDOW_SIZE = None
 PROFILE_OUT_PATH = "/tmp/tensorboard"
 
 USE_DP = False
-USE_SP = False
+SP_NUM = 1
 
 ####
 
@@ -571,10 +571,10 @@ def main():
     tp_dim //= 2
     dp_dim = 2
   
-  if args.use_sp:
-    print(f"{args.use_sp=}")
-    tp_dim //= 2
-    sp_dim = 2
+  if args.sp_num > 1:
+    print(f"{args.sp_num=}")
+    tp_dim //= args.sp_num
+    sp_dim = args.sp_num
 
   print(f"{tp_dim=}, {dp_dim=}, {sp_dim=}")
      
@@ -837,7 +837,7 @@ def parse_args():
     parser.add_argument("--num_inference_steps", type=int, default=NUM_STEP)
     parser.add_argument("--window_size", type=int, nargs=2, default=None)
     parser.add_argument("--use_dp", action="store_true", default=USE_DP)
-    parser.add_argument("--use_sp", action="store_true", default=USE_SP)
+    parser.add_argument("--sp_num", type=int, default=SP_NUM)
     parser.add_argument("--teacache_thresh", type=float, default=0.2)
     parser.add_argument("--use_ret_steps", action="store_true", default=False)
     parser.add_argument("--enable_teacache", action="store_true", default=False)
