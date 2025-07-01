@@ -307,3 +307,30 @@ with wan_tx_splash_attn.py
   * 397s
 * v6e-16 with dp=2, sp=2, tp=4:
   * 215s
+=======
+
+
+### Add TeaCache Support
+
+By default in teacache disable mode
+
+```
+python wan_tx_splash_attn.py
+```
+
+
+
+TeaCache enable with option: --enable-teacache
+```
+$ python wan_tx_splash_attn.py --enable_teacache --teacache_thresh 0.05
+Load and port Wan 2.1 VAE on tpu
+.
+.
+.
+100%|██████████████████████████████████████████████████████| 50/50 [02:52<00:00,  3.44s/it]
+numpy shape: (720, 1280, 3, 81)
+output video done. 20250630_085619.mp4
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 50/50 [02:45<00:00,  3.31s/it]
+Iteration 0: 206.830970s
+DONE
+```
