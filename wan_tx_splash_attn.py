@@ -567,14 +567,16 @@ def main():
   tp_dim, dp_dim, sp_dim = len(jax.devices()), 1, 1
   if args.use_dp:
     # tp_dim > 8, which is v6e-16, could not divide head_dim=40, need use dp
-    print(f"{USE_DP=}")
+    print(f"{args.use_dp=}")
     tp_dim //= 2
     dp_dim = 2
   
   if args.use_sp:
-    print(f"{USE_SP=}")
+    print(f"{args.use_sp=}")
     tp_dim //= 2
     sp_dim = 2
+
+  print(f"{tp_dim=}, {dp_dim=}, {sp_dim=}")
      
   # mesh = jax.make_mesh((len(jax.devices()), 1), (axis, 'fsdp'))
   mesh_devices = mesh_utils.create_device_mesh((tp_dim, dp_dim, sp_dim), allow_split_physical_axes=True)
@@ -843,4 +845,5 @@ def parse_args():
 
 if __name__ == '__main__':
   args = parse_args()
+  print(args)
   main()

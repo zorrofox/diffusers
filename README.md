@@ -292,3 +292,18 @@ test using flash attention wan_tx:
 test with wan_tx_splash_attn:
 * v6e-16 with dp=2, tp=4, sp=2:
     * VAE OOM
+
+### Modify maxdiffusion to reduce memory usage
+
+To utilize sp with maxdiffusion vae, need to reduce the peak memory usage.  
+Modification is in https://github.com/yuyanpeng-google/maxdiffusion/tree/wan2.1-dev.
+```
+# Install modified dependency
+pip install git+https://github.com/yuyanpeng-google/maxdiffusion.git@wan2.1-dev
+```
+
+with wan_tx_splash_attn.py
+* v6e-8 with dp=2, sp=1, tp=4:
+  * 397s
+* v6e-16 with dp=2, sp=2, tp=4:
+  * 215s
