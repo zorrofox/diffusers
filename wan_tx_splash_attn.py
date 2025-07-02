@@ -66,8 +66,8 @@ FPS = 16
 NUM_STEP = 50
 # NUM_STEP = 1
 
-BQSIZE =  2656 # 2240 # 3024 #2520
-BKVSIZE = 2048 # 2304 # 1664 #2048
+BQSIZE =  1512 # 2240 # 3024 #2520
+BKVSIZE = 1024
 
 # <--- NEW: Local Attention Window Size Setting --->
 # window_size = (left, right). (128, 0) means each token can attend to itself and the previous 128 tokens.
@@ -842,7 +842,7 @@ def main():
       # make sure all computation done
       jax.effects_barrier()
       end = time.perf_counter()  
-      print(f'Iteration {i}: {end - start:.6f}s')
+      print(f'Iteration {i} BKVSIZE={BKVSIZE}, BQSIZE={BQSIZE}: {end - start:.6f}s')
         
   print('DONE')
 
@@ -859,9 +859,13 @@ def parse_args():
     parser.add_argument("--use_dp", action="store_true", default=USE_DP)
     parser.add_argument("--sp_num", type=int, default=SP_NUM)
     parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
+    parser.add_argument("--bqsize", type=int, default=1512, help="Block Q size")
+    parser.add_argument("--bkvsize", type=int, default=256, help="Block KV size")
     return parser.parse_args()
 
 if __name__ == '__main__':
   args = parse_args()
   print(args)
+  BQSIZE = args.bqsize
+  BKVSIZE = args.bkvsize
   main()
