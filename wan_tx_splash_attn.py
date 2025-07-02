@@ -30,6 +30,7 @@ from maxdiffusion.models.wan.autoencoder_kl_wan import (
     AutoencoderKLWanCache,
 )
 from maxdiffusion.models.wan.wan_utils import load_wan_vae
+from flax.linen import partitioning as nn_partitioning
 
 from diffusers.utils import export_to_video
 from diffusers import AutoencoderKLWan as TorchAutoencoderKLWan, WanPipeline
@@ -78,6 +79,12 @@ PROFILE_OUT_PATH = "/tmp/tensorboard"
 
 USE_DP = True
 SP_NUM = 2
+
+# for shard vae
+LOGICAL_AXIS_RULES = (
+                    ('conv_out', ('axis','dp','sp')),
+                    ('conv_in', ('axis','dp','sp'))
+                  )
 
 ####
 
@@ -443,6 +450,25 @@ def load_wan_vae_fixed(pretrained_model_name_or_path: str, eval_shapes: dict, de
 
         return flax_state_dict
 
+### Sharding VAE ###
+
+def _add_sharding_rule(vs: nnx.VariableState, logical_axis_rules) -> nnx.VariableState:
+  vs.sharding_rules = logical_axis_rules
+  return vs
+
+@nnx.jit(static_argnums=(1,), donate_argnums=(0,))
+def create_sharded_logical_model(model, logical_axis_rules):
+  graphdef, state, rest_of_state = nnx.split(model, nnx.Param, ...)
+  p_add_sharding_rule = functools.partial(_add_sharding_rule, logical_axis_rules=logical_axis_rules)
+  state = jax.tree.map(p_add_sharding_rule, state, is_leaf=lambda x: isinstance(x, nnx.VariableState))
+  pspecs = nnx.get_partition_spec(state)
+  sharded_state = jax.lax.with_sharding_constraint(state, pspecs)
+  model = nnx.merge(graphdef, sharded_state, rest_of_state)
+  return model
+
+#####################
+
+
 # --- Config Wrapper ---
 class ConfigWrapper:
     def __init__(self, **kwargs):
@@ -598,18 +624,24 @@ def main():
       mesh=mesh
   )
   
-  # Create VAE cache
-  vae_cache = AutoencoderKLWanCache(wan_vae)
+  with mesh:
+    # Create VAE cache
+    vae_cache = AutoencoderKLWanCache(wan_vae)
+    
+    # Load pretrained weights
+    graphdef, state = nnx.split(wan_vae)
+    params = state.to_pure_dict()
+    params = load_wan_vae_fixed(model_id, params, "tpu")
+    # 保证全部 replicate 到 mesh 上所有 device
+    sharding = NamedSharding(mesh, P())
+    params = jax.tree_util.tree_map(lambda x: sharded_device_put(x, sharding), params)
+    params = jax.tree_util.tree_map(lambda x: x.astype(jnp.bfloat16), params)
+    wan_vae = nnx.merge(graphdef, params)
+
+    # Shard vae
+    p_create_sharded_logical_model = functools.partial(create_sharded_logical_model, logical_axis_rules=LOGICAL_AXIS_RULES)
+    wan_vae = p_create_sharded_logical_model(model=wan_vae)
   
-  # Load pretrained weights
-  graphdef, state = nnx.split(wan_vae)
-  params = state.to_pure_dict()
-  params = load_wan_vae_fixed(model_id, params, "tpu")
-  # 保证全部 replicate 到 mesh 上所有 device
-  sharding = NamedSharding(mesh, P())
-  params = jax.tree_util.tree_map(lambda x: sharded_device_put(x, sharding), params)
-  params = jax.tree_util.tree_map(lambda x: x.astype(jnp.bfloat16), params)
-  wan_vae = nnx.merge(graphdef, params)
   
   # Skip PyTorch VAE loading to avoid torchax interference
   # We'll use JAX VAE directly
@@ -755,7 +787,7 @@ def main():
 
   generator = torch.Generator()
   generator.manual_seed(42)
-  with mesh:
+  with mesh, nn_partitioning.axis_rules(LOGICAL_AXIS_RULES):
     # warm up and save video
     pipe_kwargs = {
         'prompt': prompt,
