@@ -334,3 +334,21 @@ output video done. 20250630_085619.mp4
 Iteration 0: 206.830970s
 DONE
 ```
+
+
+### Add VAE sharding
+
+* v6e-8, dp=2, sp=1, tp=4
+  * python wan_tx_splash_attn.py --use_dp --sp_num=1
+  * 100%|█████████████| 50/50 [06:06<00:00,  7.32s/it]
+  * Iteration 0: 376.032197s
+* v6e-16, dp=2, sp=2, tp=4
+  * python wan_tx_splash_attn.py --use_dp --sp_num=2
+  * 100%|██████████| 50/50 [03:16<00:00,  3.93s/it]
+  * Iteration 0: 205.504582s
+* v6e-32, dp=2, sp=2, tp=8
+  * python wan_tx_splash_attn.py --use_dp --sp_num=2
+  * 100%|██████████| 50/50 [02:06<00:00,  2.53s/it]
+  * Iteration 0: 134.893512s
+
+VAE is consuming about 10s now.
