@@ -860,8 +860,8 @@ def parse_args():
     parser.add_argument("--use_dp", action="store_true", default=USE_DP)
     parser.add_argument("--sp_num", type=int, default=SP_NUM)
     parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
-    parser.add_argument("--bqsize", type=int, default=1512, help="Block Q size")
-    parser.add_argument("--bkvsize", type=int, default=256, help="Block KV size")
+    parser.add_argument("--bqsize", type=int, default=BQSIZE, help="Block Q size")
+    parser.add_argument("--bkvsize", type=int, default=BKVSIZE, help="Block KV size")
     parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
     return parser.parse_args()
 
