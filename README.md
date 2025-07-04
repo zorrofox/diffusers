@@ -335,3 +335,12 @@ VAE is consuming about 10s now.
   * python wan_tx_splash_attn.py --use_dp --sp_num=2 --bqsize 1512 --bkvsize 1024
   * 100%|██████████| 50/50 [03:07<00:00,  3.76s/it]
   * Iteration 0: BKVSIZE=1024, BQSIZE=1512: 196.695673s
+
+### Adjust sharding using FSDP on sequence and remesh to head on self attn, and still sp on cross attn
+To prevent all reduce on long sequence.
+The optimal block size may change. Not sweep the block size yet.
+
+* v6e-16, dp=2, sp=1, tp=8
+  * python wan_tx_splash_attn.py --use_dp --sp_num=1 --bqsize 1512 --bkvsize 1024
+  * 100%|██████████| 50/50 [02:55<00:00,  3.50s/it]
+  * Iteration 0 BKVSIZE=1024, BQSIZE=1512: 184.074076s

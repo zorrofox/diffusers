@@ -75,10 +75,10 @@ BKVSIZE = 1024
 # Set to None to use the original full Causal Attention.
 WINDOW_SIZE = None
 
-PROFILE_OUT_PATH = "/tmp/tensorboard"
+PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
 USE_DP = True
-SP_NUM = 2
+SP_NUM = 1
 
 # for shard vae
 LOGICAL_AXIS_RULES = (
@@ -96,49 +96,49 @@ transformer_shardings = {
 # 'scale_shift_table': (), # (torch.Size([1, 2, 1536]), torch.float32)
 # 'patch_embedding.weight': (), # (torch.Size([1536, 16, 1, 2, 2]), torch.bfloat16)
 # 'patch_embedding.bias': (), # (torch.Size([1536]), torch.bfloat16)
-r'condition_embedder.time_embedder.linear_1.weight': (axis, None), # (torch.Size([1536, 256]), torch.float32)
-r'condition_embedder.time_embedder.linear_1.bias': (axis,), # (torch.Size([1536]), torch.float32)
-r'condition_embedder.time_embedder.linear_2.weight': (None, axis), # (torch.Size([1536, 1536]), torch.float32)
-# 'condition_embedder.time_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.float32)
-# 'condition_embedder.time_proj.weight': (), # (torch.Size([9216, 1536]), torch.bfloat16)
-# 'condition_embedder.time_proj.bias': (), # (torch.Size([9216]), torch.bfloat16)
-r'condition_embedder.text_embedder.linear_1.weight': (axis, None), # (torch.Size([1536, 4096]), torch.bfloat16)
-r'condition_embedder.text_embedder.linear_1.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'condition_embedder.text_embedder.linear_2.weight': (None, axis), # (torch.Size([1536, 1536]), torch.bfloat16)
-# 'condition_embedder.text_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'condition_embedder.time_embedder.linear_1.weight': (None, (axis,'sp'),), # (torch.Size([1536, 256]), torch.float32)
+# r'condition_embedder.time_embedder.linear_1.bias': (), # (torch.Size([1536]), torch.float32)
+r'condition_embedder.time_embedder.linear_2.weight': ((axis,'sp'), None), # (torch.Size([1536, 1536]), torch.float32)
+# r'condition_embedder.time_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.float32)
+r'condition_embedder.time_proj.weight': ((axis,'sp'), None,), # (torch.Size([9216, 1536]), torch.bfloat16)
+# r'condition_embedder.time_proj.bias': (), # (torch.Size([9216]), torch.bfloat16)
+r'condition_embedder.text_embedder.linear_1.weight': (None, (axis,'sp'),), # (torch.Size([1536, 4096]), torch.bfloat16)
+# r'condition_embedder.text_embedder.linear_1.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'condition_embedder.text_embedder.linear_2.weight': ((axis,'sp'), None), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'condition_embedder.text_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.scale_shift_table': (), # (torch.Size([1, 6, 1536]), torch.float32)
 # 'blocks.\d+.attn1.norm_q.weight': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.attn1.norm_k.weight': (), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_q.weight': (axis, None), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_q.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_k.weight': (axis, ), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_k.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_v.weight': (axis, ), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn1.to_v.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_q.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn1.to_q.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_k.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn1.to_k.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_v.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn1.to_v.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # to_out has 2 submodules, the first is the Linear and second is dropout
-r'blocks.\d+.attn1.to_out.0.weight': (None, axis), # (torch.Size([1536, 1536]), torch.bfloat16)
-# 'blocks.\d+.attn1.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_out.0.weight': ((axis,'sp'), None), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn1.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.attn1.to_out.1.weight': (), # (torch.Size([1536, 1536]), torch.bfloat16)
 # 'blocks.\d+.attn1.to_out.1.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.attn2.norm_q.weight': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.attn2.norm_k.weight': (), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_q.weight': (axis, ), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_q.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_k.weight': (axis, ), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_k.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_v.weight': (axis, ), # (torch.Size([1536, 1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_v.bias': (axis, ), # (torch.Size([1536]), torch.bfloat16)
-r'blocks.\d+.attn2.to_out.0.weight': (None, axis), # (torch.Size([1536, 1536]), torch.bfloat16)
-# 'blocks.\d+.attn2.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_q.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn2.to_q.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_k.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn2.to_k.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_v.weight': (None, (axis,'sp'),), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn2.to_v.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_out.0.weight': ((axis,'sp'), None), # (torch.Size([1536, 1536]), torch.bfloat16)
+# r'blocks.\d+.attn2.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.attn2.to_out.1.weight': (), # (torch.Size([1536, 1536]), torch.bfloat16)
 # 'blocks.\d+.attn2.to_out.1.bias': (), # (torch.Size([1536]), torch.bfloat16)
 # 'blocks.\d+.norm2.weight': (), # (torch.Size([1536]), torch.float32)
-# 'blocks.\d+.norm2.bias': (), # (torch.Size([1536]), torch.float32)
-r'blocks.\d+.ffn.net.0.proj.weight': (axis,), # (torch.Size([8960, 1536]), torch.bfloat16)
-r'blocks.\d+.ffn.net.0.proj.bias': (axis, ), # (torch.Size([8960]), torch.bfloat16)
-r'blocks.\d+.ffn.net.2.weight': (None, axis), # (torch.Size([1536, 8960]), torch.bfloat16)
-# 'blocks.\d+.ffn.net.2.bias': (), # (torch.Size([1536]), torch.bfloat16)
-# 'proj_out.weight': (), # (torch.Size([64, 1536]), torch.bfloat16)
+# r'blocks.\d+.norm2.bias': (), # (torch.Size([1536]), torch.float32)
+r'blocks.\d+.ffn.net.0.proj.weight': (None, (axis,'sp'),), # (torch.Size([8960, 1536]), torch.bfloat16)
+# r'blocks.\d+.ffn.net.0.proj.bias': (), # (torch.Size([8960]), torch.bfloat16)
+r'blocks.\d+.ffn.net.2.weight': ((axis,'sp'), None), # (torch.Size([1536, 8960]), torch.bfloat16)
+# r'blocks.\d+.ffn.net.2.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'proj_out.weight': (None, (axis,'sp'),), # (torch.Size([64, 1536]), torch.bfloat16)
 # 'proj_out.bias': (), # (torch.Size([64]), torch.bfloat16)
 }
 
@@ -327,8 +327,14 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
         kv_partition_spec = P()
     else:
         # Sharded case for Transformer. Split along the heads axis.
-        q_partition_spec = P('dp', 'axis', 'sp', None)
-        kv_partition_spec = P('dp', 'axis', None, None)
+        # Attn1 self attention, key length is long.
+        if key.shape[2] > 10000:
+          q_partition_spec = P('dp', 'axis', 'sp', None)
+          kv_partition_spec = P('dp', 'axis', None, None)
+        else:
+          # Attn2 which is cross attention, kv sequence is shorter. All gather the key value cost less.
+          q_partition_spec = P('dp', None, ('axis', 'sp'), None)
+          kv_partition_spec = P('dp', None, None, None)
 
     # ALWAYS use shard_map. The partition_spec will control the behavior.
     sharded_fn = shard_map(
@@ -338,7 +344,9 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
         out_specs=q_partition_spec,
         check_rep=False,
     )
-    return sharded_fn(query, key, value)
+    out = sharded_fn(query, key, value)
+    out = jax.lax.with_sharding_constraint(out, P('dp', None, ('axis', 'sp'), None))
+    return out
 
 
 # <--- MODIFIED: Added window_size parameter to the function signature --->
@@ -816,24 +824,25 @@ def main():
     export_to_video(output, file_name, fps=args.fps)
     print(f"output video done. {file_name}")
     
-    # profile set fewer step and output latent to skip VAE for now
-    # output_type='latent' will skip VAE
-    #jax.profiler.start_trace(PROFILE_OUT_PATH)
-    #output = pipe(
-    #    prompt=prompt,
-    #    negative_prompt=negative_prompt,
-    #    height=HEIGHT,
-    #    width=WIDTH,
-    #    num_inference_steps=2,
-    #    num_frames=FRAMES,
-    #    guidance_scale=5.0,
-    #    output_type="latent",
-    #    generator=generator,
-    #    use_dp=USE_DP,
-    #)
-    #jax.effects_barrier()
-    #jax.profiler.stop_trace()
-    #print("profile done")
+    if args.profile:
+      # profile set fewer step and output latent to skip VAE for now
+      # output_type='latent' will skip VAE
+      jax.profiler.start_trace(PROFILE_OUT_PATH)
+      output = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=args.height,
+        width=args.width,
+        num_inference_steps=3,
+        num_frames=args.frames,
+        guidance_scale=5.0,
+        output_type="latent",
+        generator=generator,
+        use_dp=args.use_dp,
+      )
+      jax.effects_barrier()
+      jax.profiler.stop_trace()
+      print("profile done")
     
     # Benchmark loop
     for i in range(1):
@@ -859,8 +868,9 @@ def parse_args():
     parser.add_argument("--use_dp", action="store_true", default=USE_DP)
     parser.add_argument("--sp_num", type=int, default=SP_NUM)
     parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
-    parser.add_argument("--bqsize", type=int, default=1512, help="Block Q size")
-    parser.add_argument("--bkvsize", type=int, default=256, help="Block KV size")
+    parser.add_argument("--bqsize", type=int, default=BQSIZE, help="Block Q size")
+    parser.add_argument("--bkvsize", type=int, default=BKVSIZE, help="Block KV size")
+    parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
     return parser.parse_args()
 
 if __name__ == '__main__':
