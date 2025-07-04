@@ -75,7 +75,7 @@ BKVSIZE = 1024
 # Set to None to use the original full Causal Attention.
 WINDOW_SIZE = None
 
-PROFILE_OUT_PATH = "/tmp/tensorboard"
+PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
 USE_DP = True
 SP_NUM = 2
@@ -816,24 +816,25 @@ def main():
     export_to_video(output, file_name, fps=args.fps)
     print(f"output video done. {file_name}")
     
-    # profile set fewer step and output latent to skip VAE for now
-    # output_type='latent' will skip VAE
-    #jax.profiler.start_trace(PROFILE_OUT_PATH)
-    #output = pipe(
-    #    prompt=prompt,
-    #    negative_prompt=negative_prompt,
-    #    height=HEIGHT,
-    #    width=WIDTH,
-    #    num_inference_steps=2,
-    #    num_frames=FRAMES,
-    #    guidance_scale=5.0,
-    #    output_type="latent",
-    #    generator=generator,
-    #    use_dp=USE_DP,
-    #)
-    #jax.effects_barrier()
-    #jax.profiler.stop_trace()
-    #print("profile done")
+    if args.profile:
+      # profile set fewer step and output latent to skip VAE for now
+      # output_type='latent' will skip VAE
+      jax.profiler.start_trace(PROFILE_OUT_PATH)
+      output = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=args.height,
+        width=args.width,
+        num_inference_steps=3,
+        num_frames=args.frames,
+        guidance_scale=5.0,
+        output_type="latent",
+        generator=generator,
+        use_dp=args.use_dp,
+      )
+      jax.effects_barrier()
+      jax.profiler.stop_trace()
+      print("profile done")
     
     # Benchmark loop
     for i in range(1):
@@ -861,6 +862,7 @@ def parse_args():
     parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
     parser.add_argument("--bqsize", type=int, default=1512, help="Block Q size")
     parser.add_argument("--bkvsize", type=int, default=256, help="Block KV size")
+    parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
     return parser.parse_args()
 
 if __name__ == '__main__':
