@@ -344,3 +344,10 @@ The optimal block size may change. Not sweep the block size yet.
   * python wan_tx_splash_attn.py --use_dp --sp_num=1 --bqsize 1512 --bkvsize 1024
   * 100%|██████████| 50/50 [02:55<00:00,  3.50s/it]
   * Iteration 0 BKVSIZE=1024, BQSIZE=1512: 184.074076s
+
+### Sweep best block size and use TP again
+Use TP faster 1.5s than FSDP on v6e-16. Use parameter --use_fsdp to use the FSDP.
+
+* v6e-16 With best block size:
+  * 100%|██████████| 50/50 [02:42<00:00,  3.24s/it]
+  * Iteration 0 BKVCOMPUTESIZE=1024 BKVSIZE=2048, BQSIZE=3024: 171.043314s

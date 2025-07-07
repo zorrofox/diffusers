@@ -66,8 +66,9 @@ FPS = 16
 NUM_STEP = 50
 # NUM_STEP = 1
 
-BQSIZE =  1512 # 2240 # 3024 #2520
-BKVSIZE = 1024
+BQSIZE =  3024 # 2240 # 3024 #2520
+BKVSIZE = 2048
+BKVCOMPUTESIZE = 1024
 
 # <--- NEW: Local Attention Window Size Setting --->
 # window_size = (left, right). (128, 0) means each token can attend to itself and the previous 128 tokens.
@@ -79,6 +80,7 @@ PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
 USE_DP = True
 SP_NUM = 1
+USE_FSDP = False
 
 # for shard vae
 LOGICAL_AXIS_RULES = (
@@ -92,7 +94,7 @@ LOGICAL_AXIS_RULES = (
 axis = 'axis'
 
 # Sharding for tranformers, all the replicated are commented out for speed
-transformer_shardings = {
+transformer_shardings_fsdp = {
 # 'scale_shift_table': (), # (torch.Size([1, 2, 1536]), torch.float32)
 # 'patch_embedding.weight': (), # (torch.Size([1536, 16, 1, 2, 2]), torch.bfloat16)
 # 'patch_embedding.bias': (), # (torch.Size([1536]), torch.bfloat16)
@@ -139,6 +141,56 @@ r'blocks.\d+.ffn.net.0.proj.weight': (None, (axis,'sp'),), # (torch.Size([8960, 
 r'blocks.\d+.ffn.net.2.weight': ((axis,'sp'), None), # (torch.Size([1536, 8960]), torch.bfloat16)
 # r'blocks.\d+.ffn.net.2.bias': (), # (torch.Size([1536]), torch.bfloat16)
 r'proj_out.weight': (None, (axis,'sp'),), # (torch.Size([64, 1536]), torch.bfloat16)
+# 'proj_out.bias': (), # (torch.Size([64]), torch.bfloat16)
+}
+
+transformer_shardings_tp = {
+# 'scale_shift_table': (), # (torch.Size([1, 2, 1536]), torch.float32)
+# 'patch_embedding.weight': (), # (torch.Size([1536, 16, 1, 2, 2]), torch.bfloat16)
+# 'patch_embedding.bias': (), # (torch.Size([1536]), torch.bfloat16)
+r'condition_embedder.time_embedder.linear_1.weight': ((axis,'sp'), None), # (torch.Size([1536, 256]), torch.float32)
+r'condition_embedder.time_embedder.linear_1.bias': ((axis,'sp'),), # (torch.Size([1536]), torch.float32)
+r'condition_embedder.time_embedder.linear_2.weight': (None, (axis,'sp')), # (torch.Size([1536, 1536]), torch.float32)
+# 'condition_embedder.time_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.float32)
+# 'condition_embedder.time_proj.weight': (), # (torch.Size([9216, 1536]), torch.bfloat16)
+# 'condition_embedder.time_proj.bias': (), # (torch.Size([9216]), torch.bfloat16)
+r'condition_embedder.text_embedder.linear_1.weight': ((axis,'sp'), None), # (torch.Size([1536, 4096]), torch.bfloat16)
+r'condition_embedder.text_embedder.linear_1.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'condition_embedder.text_embedder.linear_2.weight': (None, (axis,'sp')), # (torch.Size([1536, 1536]), torch.bfloat16)
+# 'condition_embedder.text_embedder.linear_2.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.scale_shift_table': (), # (torch.Size([1, 6, 1536]), torch.float32)
+# 'blocks.\d+.attn1.norm_q.weight': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.attn1.norm_k.weight': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_q.weight': ((axis,'sp'), None), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_q.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_k.weight': ((axis,'sp'), ), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_k.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_v.weight': ((axis,'sp'), ), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn1.to_v.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+# to_out has 2 submodules, the first is the Linear and second is dropout
+r'blocks.\d+.attn1.to_out.0.weight': (None, (axis,'sp')), # (torch.Size([1536, 1536]), torch.bfloat16)
+# 'blocks.\d+.attn1.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.attn1.to_out.1.weight': (), # (torch.Size([1536, 1536]), torch.bfloat16)
+# 'blocks.\d+.attn1.to_out.1.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.attn2.norm_q.weight': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.attn2.norm_k.weight': (), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_q.weight': ((axis,'sp'), ), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_q.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_k.weight': ((axis,'sp'), ), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_k.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_v.weight': ((axis,'sp'), ), # (torch.Size([1536, 1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_v.bias': ((axis,'sp'), ), # (torch.Size([1536]), torch.bfloat16)
+r'blocks.\d+.attn2.to_out.0.weight': (None, (axis,'sp')), # (torch.Size([1536, 1536]), torch.bfloat16)
+# 'blocks.\d+.attn2.to_out.0.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.attn2.to_out.1.weight': (), # (torch.Size([1536, 1536]), torch.bfloat16)
+# 'blocks.\d+.attn2.to_out.1.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'blocks.\d+.norm2.weight': (), # (torch.Size([1536]), torch.float32)
+# 'blocks.\d+.norm2.bias': (), # (torch.Size([1536]), torch.float32)
+r'blocks.\d+.ffn.net.0.proj.weight': ((axis,'sp'),), # (torch.Size([8960, 1536]), torch.bfloat16)
+r'blocks.\d+.ffn.net.0.proj.bias': ((axis,'sp'), ), # (torch.Size([8960]), torch.bfloat16)
+r'blocks.\d+.ffn.net.2.weight': (None, (axis,'sp')), # (torch.Size([1536, 8960]), torch.bfloat16)
+# 'blocks.\d+.ffn.net.2.bias': (), # (torch.Size([1536]), torch.bfloat16)
+# 'proj_out.weight': (), # (torch.Size([64, 1536]), torch.bfloat16)
 # 'proj_out.bias': (), # (torch.Size([64]), torch.bfloat16)
 }
 
@@ -307,7 +359,9 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
             # =============================================================
 
             block_sizes = splash_attention.BlockSizes(
-                block_q=min(BQSIZE, padded_q_seq_len), block_kv=min(BKVSIZE, padded_kv_seq_len)
+                block_q=min(BQSIZE, padded_q_seq_len),
+                block_kv=min(BKVSIZE, padded_kv_seq_len),
+                block_kv_compute=min(BKVCOMPUTESIZE, padded_kv_seq_len),
             )
             splash_kernel = splash_attention.make_splash_mha(
                 mask=mask, block_sizes=block_sizes, head_shards=1, q_seq_shards=1
@@ -756,6 +810,11 @@ def main():
   #pipe.to('jax')
   print('Number of devices is:, ', len(jax.devices()))
 
+  if args.use_fsdp:
+    transformer_shardings = transformer_shardings_fsdp
+  else:
+    transformer_shardings = transformer_shardings_tp
+
   pipe.transformer.params = _shard_weight_dict(pipe.transformer.params, 
                                                transformer_shardings,
                                                mesh)
@@ -851,7 +910,7 @@ def main():
       # make sure all computation done
       jax.effects_barrier()
       end = time.perf_counter()  
-      print(f'Iteration {i} BKVSIZE={BKVSIZE}, BQSIZE={BQSIZE}: {end - start:.6f}s')
+      print(f'Iteration {i} BKVCOMPUTESIZE={BKVCOMPUTESIZE} BKVSIZE={BKVSIZE}, BQSIZE={BQSIZE}: {end - start:.6f}s')
         
   print('DONE')
 
@@ -870,7 +929,9 @@ def parse_args():
     parser.add_argument("--t5_cpu", action="store_true", default=False, help="Offload T5 text_encoder to CPU")
     parser.add_argument("--bqsize", type=int, default=BQSIZE, help="Block Q size")
     parser.add_argument("--bkvsize", type=int, default=BKVSIZE, help="Block KV size")
+    parser.add_argument("--bkvcomputesize", type=int, default=BKVCOMPUTESIZE, help="Block KV compute size")
     parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
+    parser.add_argument("--use_fsdp", action="store_true", default=USE_FSDP, help="Use FSDP")
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -878,4 +939,5 @@ if __name__ == '__main__':
   print(args)
   BQSIZE = args.bqsize
   BKVSIZE = args.bkvsize
+  BKVCOMPUTESIZE = args.bkvcomputesize
   main()
