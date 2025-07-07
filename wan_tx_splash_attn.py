@@ -428,8 +428,10 @@ def scaled_dot_product_attention(
   if env.config.use_tpu_splash_attention:
     #print(f"[DEBUG] Using splash attention")
     jquery, jkey, jvalue = env.t2j_iso((query, key, value))
+    key_mean = jnp.mean(jkey, axis=2, keepdims=True)
+    jkey_smoothed = jkey - key_mean
     # <--- MODIFIED: Pass window_size to the backend function --->
-    res = _tpu_splash_attention(jquery, jkey, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
+    res = _tpu_splash_attention(jquery, jkey_smoothed, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
     return env.j2t_iso(res)
 
   #print(f"[DEBUG] Using reference implementation (fallback)")
