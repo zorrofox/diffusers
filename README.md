@@ -18,11 +18,12 @@ pip install git+https://github.com/AI-Hypercomputer/maxdiffusion
 To run:
 
 ```
-python wan_tx.py
+python wan_tx_splash_attn.py
 ```
 
 # Progress:
 
+```
 (Jun 17)
 ┏━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
 ┃ Device ┃ Memory usage         ┃ Duty cycle ┃
@@ -35,6 +36,7 @@ python wan_tx.py
 │ 5      │ 2.08 GiB / 31.25 GiB │      0.00% │
 │ 6      │ 2.08 GiB / 31.25 GiB │      0.00% │
 │ 7      │ 2.08 GiB / 31.25 GiB │      0.00% │
+```
 
 
 ## sizes:
@@ -155,9 +157,7 @@ python compare_fa_sharding_consistency.py
 ==============================
       FINAL CONCLUSION
 ==============================
-❌❌❌ [FAILED] The outputs are different.
-This provides strong evidence that the problem IS inside the WanTransformer3DModel when Flash Attention is used.
-The root cause is likely the self-attention calculation itself being altered by torchax's Flash Attention implementation, when used with this specific tensor sharding strategy.
+...
 ==============================
 
 ```
@@ -357,4 +357,5 @@ Use TP faster 1.5s than FSDP on v6e-16. Use parameter --use_fsdp to use the FSDP
 `python wan_tx_splash_attn.py --use_k_smooth=False`
 * v6e-16
   * 100%|██████████| 50/50 [02:13<00:00,  2.68s/it]
-  * Iteration 0 BKVCOMPUTESIZE=1024 BKVSIZE=2048, BQSIZE=3024: 143.149646s
+  * Iteration 0 BKVCOMPUTESIZE=1024 BKVSIZE=2048, BQSIZE=3024: $${\color{red}143.149646s$$
+
