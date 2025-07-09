@@ -80,13 +80,15 @@ PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
 USE_DP = True
 SP_NUM = 1
-USE_FSDP = False
+USE_FSDP = True
 
 # for shard vae
 LOGICAL_AXIS_RULES = (
                     ('conv_out', ('axis','dp','sp')),
                     ('conv_in', ('axis','dp','sp'))
                   )
+
+USE_K_SMOOTH = True
 
 ####
 
@@ -428,10 +430,12 @@ def scaled_dot_product_attention(
   if env.config.use_tpu_splash_attention:
     #print(f"[DEBUG] Using splash attention")
     jquery, jkey, jvalue = env.t2j_iso((query, key, value))
-    key_mean = jnp.mean(jkey, axis=2, keepdims=True)
-    jkey_smoothed = jkey - key_mean
+    if USE_K_SMOOTH:
+      key_mean = jnp.mean(jkey, axis=2, keepdims=True)
+      # jkey_smoothed
+      jkey = jkey - key_mean
     # <--- MODIFIED: Pass window_size to the backend function --->
-    res = _tpu_splash_attention(jquery, jkey_smoothed, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
+    res = _tpu_splash_attention(jquery, jkey, jvalue, env, scale=scale, is_causal=is_causal, window_size=window_size)
     return env.j2t_iso(res)
 
   #print(f"[DEBUG] Using reference implementation (fallback)")
@@ -884,6 +888,7 @@ def main():
     file_name = f"{current_datetime}.mp4"
     export_to_video(output, file_name, fps=args.fps)
     print(f"output video done. {file_name}")
+    jax.effects_barrier()
     
     if args.profile:
       # profile set fewer step and output latent to skip VAE for now
@@ -933,7 +938,8 @@ def parse_args():
     parser.add_argument("--bkvsize", type=int, default=BKVSIZE, help="Block KV size")
     parser.add_argument("--bkvcomputesize", type=int, default=BKVCOMPUTESIZE, help="Block KV compute size")
     parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
-    parser.add_argument("--use_fsdp", action="store_true", default=USE_FSDP, help="Use FSDP")
+    parser.add_argument("--use_fsdp", type=bool, default=USE_FSDP, help="Use FSDP")
+    parser.add_argument("--use_k_smooth", type=bool, default=USE_K_SMOOTH, help="Use K smooth")
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -942,4 +948,5 @@ if __name__ == '__main__':
   BQSIZE = args.bqsize
   BKVSIZE = args.bkvsize
   BKVCOMPUTESIZE = args.bkvcomputesize
+  USE_K_SMOOTH = args.use_k_smooth
   main()
