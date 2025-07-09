@@ -63,6 +63,10 @@ class WanAttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        query = mark_sharding(query, P("dp", ("axis", "sp"), None))
+        key = mark_sharding(key, P("dp", ("axis", "sp"), None))
+        value = mark_sharding(value, P("dp", ("axis", "sp"), None))
+
         if attn.norm_q is not None:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
@@ -404,8 +408,8 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         # If the sharding size cannot divide the size, it will padding automatically.
         # hidden_states=[batch, ch, latent//4+1, height//8, width//8]
-        mark_sharding(hidden_states, P("dp", None, None, None, ('axis','sp',)))
-        mark_sharding(encoder_hidden_states, P("dp"))
+        hidden_states = mark_sharding(hidden_states, P("dp", None, None, None, ('axis','sp',)))
+        encoder_hidden_states = mark_sharding(encoder_hidden_states, P("dp"))
 
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()

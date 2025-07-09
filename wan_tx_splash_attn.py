@@ -80,7 +80,7 @@ PROFILE_OUT_PATH = "/dev/shm/tensorboard"
 
 USE_DP = True
 SP_NUM = 1
-USE_FSDP = False
+USE_FSDP = True
 
 # for shard vae
 LOGICAL_AXIS_RULES = (
@@ -938,7 +938,7 @@ def parse_args():
     parser.add_argument("--bkvsize", type=int, default=BKVSIZE, help="Block KV size")
     parser.add_argument("--bkvcomputesize", type=int, default=BKVCOMPUTESIZE, help="Block KV compute size")
     parser.add_argument("--profile", action="store_true", default=False, help="Add profiler")
-    parser.add_argument("--use_fsdp", action="store_true", default=USE_FSDP, help="Use FSDP")
+    parser.add_argument("--use_fsdp", type=bool, default=USE_FSDP, help="Use FSDP")
     parser.add_argument("--use_k_smooth", type=bool, default=USE_K_SMOOTH, help="Use K smooth")
     return parser.parse_args()
 

@@ -351,3 +351,10 @@ Use TP faster 1.5s than FSDP on v6e-16. Use parameter --use_fsdp to use the FSDP
 * v6e-16 With best block size:
   * 100%|██████████| 50/50 [02:42<00:00,  3.24s/it]
   * Iteration 0 BKVCOMPUTESIZE=1024 BKVSIZE=2048, BQSIZE=3024: 171.043314s
+
+### Fix not sharding value of attention correctly
+
+`python wan_tx_splash_attn.py --use_k_smooth=False`
+* v6e-16
+  * 100%|██████████| 50/50 [02:13<00:00,  2.68s/it]
+  * Iteration 0 BKVCOMPUTESIZE=1024 BKVSIZE=2048, BQSIZE=3024: 143.149646s
