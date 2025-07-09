@@ -404,7 +404,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         # If the sharding size cannot divide the size, it will padding automatically.
         # hidden_states=[batch, ch, latent//4+1, height//8, width//8]
-        mark_sharding(hidden_states, P("dp", None, None, ('axis','sp',), None))
+        mark_sharding(hidden_states, P("dp", None, None, None, ('axis','sp',)))
         mark_sharding(encoder_hidden_states, P("dp"))
 
         if attention_kwargs is not None:
