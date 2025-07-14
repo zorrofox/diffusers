@@ -341,10 +341,17 @@ def _tpu_splash_attention(query, key, value, env, scale=None, is_causal=False, w
             kv_seq_len = k_3d.shape[1]
             num_heads_on_device = q_3d.shape[0]
 
-            # Pad q, k, v to next multiple of BQSIZE/BKVSIZE
-            q_3d_padded, q_orig_len = pad_to_multiple(q_3d, BQSIZE, axis=1)
-            k_3d_padded, k_orig_len = pad_to_multiple(k_3d, BKVSIZE, axis=1)
-            v_3d_padded, v_orig_len = pad_to_multiple(v_3d, BKVSIZE, axis=1)
+            # self attention
+            if k_3d.shape[1] > 10000:
+              # Pad q, k, v to next multiple of BQSIZE/BKVSIZE
+              q_3d_padded, q_orig_len = pad_to_multiple(q_3d, BQSIZE, axis=1)
+              k_3d_padded, k_orig_len = pad_to_multiple(k_3d, BKVSIZE, axis=1)
+              v_3d_padded, v_orig_len = pad_to_multiple(v_3d, BKVSIZE, axis=1)
+            else:
+              # do not padding on kv in cross attention. kv length is 512
+              q_3d_padded, q_orig_len = pad_to_multiple(q_3d, BQSIZE, axis=1)
+              k_3d_padded, k_orig_len = k_3d, k_3d.shape[1]
+              v_3d_padded, v_orig_len = v_3d, v_3d.shape[1]
 
             padded_q_seq_len = q_3d_padded.shape[1]
             padded_kv_seq_len = k_3d_padded.shape[1]
