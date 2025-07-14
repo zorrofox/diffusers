@@ -406,9 +406,8 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
 
-        # If the sharding size cannot divide the size, it will padding automatically.
         # hidden_states=[batch, ch, latent//4+1, height//8, width//8]
-        hidden_states = mark_sharding(hidden_states, P("dp", None, None, None, ('axis','sp',)))
+
         encoder_hidden_states = mark_sharding(encoder_hidden_states, P("dp"))
 
         if attention_kwargs is not None:
@@ -436,6 +435,9 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
+
+        # hidden_states=[batch, latent//4+1 * height//8//2 * width//8//2, dim]
+        hidden_states = mark_sharding(hidden_states, P("dp", ('axis','sp',), None))
 
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
             timestep, encoder_hidden_states, encoder_hidden_states_image
