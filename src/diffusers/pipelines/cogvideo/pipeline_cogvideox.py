@@ -13,11 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from jax.sharding import PartitionSpec as P
+import jax
+import jax.numpy as jnp
+
 import inspect
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torchax
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback

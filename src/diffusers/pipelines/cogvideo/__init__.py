@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_cogvideox"] = ["CogVideoXPipeline"]
     _import_structure["pipeline_cogvideox_fun_control"] = ["CogVideoXFunControlPipeline"]
     _import_structure["pipeline_cogvideox_image2video"] = ["CogVideoXImageToVideoPipeline"]
+    _import_structure["modeling_flax_cogvideox_vae"] = ["FlaxAutoencoderKLCogVideoX", "FlaxAutoencoderKLCogVideoXConfig"]
     _import_structure["pipeline_cogvideox_video2video"] = ["CogVideoXVideoToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -38,6 +39,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_cogvideox import CogVideoXPipeline
         from .pipeline_cogvideox_fun_control import CogVideoXFunControlPipeline
         from .pipeline_cogvideox_image2video import CogVideoXImageToVideoPipeline
+        from .modeling_flax_cogvideox_vae import FlaxAutoencoderKLCogVideoX, FlaxAutoencoderKLCogVideoXConfig
         from .pipeline_cogvideox_video2video import CogVideoXVideoToVideoPipeline
 
 else:
